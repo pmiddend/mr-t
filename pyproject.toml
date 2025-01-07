@@ -1,0 +1,17 @@
+[project]
+name = "mr-t"
+version = "1.0.0"
+description = "connect to Eiger, stream to file and UDP"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyzmq>=26.2.0",
+    "typed-argument-parser>=1.10.1",
+]
+
+[project.scripts]
+mr_t = "mr_t:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
