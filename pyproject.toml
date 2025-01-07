@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pyzmq>=26.2.0",
+    "structlog>=24.4.0",
     "typed-argument-parser>=1.10.1",
 ]
 
@@ -91,4 +92,9 @@ reportUnnecessaryTypeIgnoreComment = false
 reportUnusedCallResult = false
 pythonVersion = "3.12"
 stubPath = "stubs"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.6",
+]
 
