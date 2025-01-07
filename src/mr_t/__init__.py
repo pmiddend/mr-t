@@ -73,7 +73,9 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
         elif len(parts) == 4:
             appendix = None
         else:
-            raise ValueError("Unexpected number of parts in image message: %s", len(parts))
+            raise ValueError(
+                "Unexpected number of parts in image message: %s", len(parts)
+            )
 
         return ZmqImage()
 
