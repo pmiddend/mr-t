@@ -43,7 +43,7 @@ class ZmqSeriesEnd:
 
 @dataclass(frozen=True)
 class ZmqImage:
-    pass
+    data: memoryview
 
 
 ZmqMessage: TypeAlias = ZmqHeader | ZmqSeriesEnd | ZmqImage
@@ -72,7 +72,8 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
         dtype = meta["type"]
         size = meta["size"]
         encoding = meta["encoding"]
-        data = parts[2].buffer  # get a memoryview instead of a bytes copy
+        # get a memoryview instead of a bytes copy
+        data = parts[2].buffer
         config = json.loads(parts[3].bytes.decode())
 
         if len(parts) == 5:
@@ -84,7 +85,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
                 "Unexpected number of parts in image message: %s", len(parts)
             )
 
-        return ZmqImage()
+        return ZmqImage(data)
 
     if htype == "dheader-1.0":
         detail = header["header_detail"]
@@ -150,7 +151,7 @@ def h5_writer_process(queue: culsans.SyncQueue[int]) -> None:
         element = queue.get()
         parent_log.info(f"got new element, queue size now: {queue.qsize()}")
         parent_log.info("sleeping a bit")
-        time.sleep(5)
+        # time.sleep(5)
     queue.join()
 
 
@@ -158,10 +159,6 @@ async def write_to_h5(msg: ZmqMessage, q: culsans.AsyncQueue[ZmqMessage]) -> Non
     parent_log.info("writing to h5")
     await q.put(msg)
     parent_log.info("writing to h5 DONE")
-
-
-async def write_to_udp(msg, udp_socket) -> None:
-    parent_log.info("writing to udp")
 
 
 class UdpTransmissionCoordinator:
@@ -180,8 +177,17 @@ class UdpTransmissionCoordinator:
         if not isinstance(msg, ZmqImage):
             return
 
-        self._socket.sendto(f"{self._message_id}foo".encode(encoding="utf-8"))
-        self._message_id += 1
+        current_position = 0
+        block_size = 2**15
+        msg_no = 0
+        while current_position < len(msg.data):
+            self._socket.sendto(
+                msg.data[current_position : current_position + block_size]
+            )
+            current_position += block_size
+            msg_no += 1
+        parent_log.info(f"sent {msg_no} message(s)")
+        # self._message_id += 1
 
 
 async def main_async() -> None:
