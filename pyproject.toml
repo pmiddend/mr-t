@@ -5,13 +5,16 @@ description = "connect to Eiger, stream to file and UDP"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "pyzmq>=26.2.0",
-    "structlog>=24.4.0",
-    "typed-argument-parser>=1.10.1",
+    "asyncudp==0.11.0",
+    "culsans==0.7.1",
+    "pyzmq==26.2.0",
+    "structlog==24.4.0",
+    "typed-argument-parser==1.10.1",
 ]
 
 [project.scripts]
 mr_t = "mr_t:main"
+dummy_client = "mr_t.dummy_client:main"
 
 [build-system]
 requires = ["hatchling"]

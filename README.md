@@ -22,3 +22,4 @@ Which will receive images from `$host:9999`.
 # References
 
 - All the ZMQ (v1) parsing code comes from Tim Schoof from the [asapo_eiger_connector](https://gitlab.desy.de/fs-sc/asapo_eiger_connector) repository.
+- All the HDF5 writing code comes from Tim Schoof from the [asapo_eiger_connector](https://gitlab.desy.de/fs-sc/asapo_nexus_writer) repository.

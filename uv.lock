@@ -2,6 +2,24 @@ version = 1
 requires-python = ">=3.12"
 
 [[package]]
+name = "aiologic"
+version = "0.12.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/e7/252c6f0e15de73917931edf4bf0c46a84c2c6f68f93e838446b8fb60bd4c/aiologic-0.12.0.tar.gz", hash = "sha256:3e3b77b5a6eeb8008429e0319ff1a767c77391b5e3834c62237bda39cdf2053c", size = 34315 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/c9/429e758432e89ff19fb95d586c60849a071ce4ec34ff67d4e9c775de4f11/aiologic-0.12.0-py3-none-any.whl", hash = "sha256:1555d95940aee7b31bcab0f47420b8792f29556138d61f0caeda19d6511bb64d", size = 39590 },
+]
+
+[[package]]
+name = "asyncudp"
+version = "0.11.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/0b/b94c42d75e2bd018727e625fa3147447cdfb26603e7b0892a4fdfcd2154d/asyncudp-0.11.0.tar.gz", hash = "sha256:c8ab6459f4dc8ebc42f401d3bd72c2a6c6808d10e42231f39e0c433ac646abf9", size = 3986 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/fe/77f4a24264e728fd95542e53f026a91249b51d1611087b8c82d3a033ea97/asyncudp-0.11.0-py3-none-any.whl", hash = "sha256:96d859d86471e3ed30cf9f05cb38e96920156e3a9fe70ee916096ba758ea316e", size = 3538 },
+]
+
+[[package]]
 name = "cffi"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
@@ -35,6 +53,18 @@ wheels = [
 ]
 
 [[package]]
+name = "culsans"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiologic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/4b/c7dfab8b690af3b50ffac1ce2aedfd30081b4017720cc970abdd4063fc56/culsans-0.7.1.tar.gz", hash = "sha256:bd4c2060fadb9931a551406cc08f2961b71fc8852a8efcc372756af0a122be73", size = 25686 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/b9/3e2b29b60512610d9c1ddfcb4e309d8be497b6acf7445d83b105cad0b753/culsans-0.7.1-py3-none-any.whl", hash = "sha256:4a768ddd77bd7e464d4e4b862a4727702d4c4c064b6b495fd42e3b52ddc287cd", size = 10444 },
+]
+
+[[package]]
 name = "docstring-parser"
 version = "0.16"
 source = { registry = "https://pypi.org/simple" }
@@ -48,6 +78,8 @@ name = "mr-t"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "asyncudp" },
+    { name = "culsans" },
     { name = "pyzmq" },
     { name = "structlog" },
     { name = "typed-argument-parser" },
@@ -60,9 +92,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pyzmq", specifier = ">=26.2.0" },
-    { name = "structlog", specifier = ">=24.4.0" },
-    { name = "typed-argument-parser", specifier = ">=1.10.1" },
+    { name = "asyncudp", specifier = "==0.11.0" },
+    { name = "culsans", specifier = "==0.7.1" },
+    { name = "pyzmq", specifier = "==26.2.0" },
+    { name = "structlog", specifier = "==24.4.0" },
+    { name = "typed-argument-parser", specifier = "==1.10.1" },
 ]
 
 [package.metadata.requires-dev]

@@ -1,11 +1,16 @@
 import asyncio
+import json
+import multiprocessing
+import time
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, TypeAlias
-from tap import Tap
+
+import asyncudp
+import culsans
+import structlog
 import zmq
 import zmq.asyncio
-import structlog
-import json
+from tap import Tap
 
 parent_log = structlog.get_logger()
 
@@ -13,6 +18,8 @@ parent_log = structlog.get_logger()
 class Arguments(Tap):
     detector_zmq_host: str
     detector_zmq_port: int = 9999
+    udp_server: str
+    udp_port: int
 
 
 def get_zmq_header(msg: list[zmq.Frame]) -> dict[str, Any]:
@@ -128,24 +135,64 @@ async def receive_zmq_messages(
 
     log.info("connect called; might not be connected yet, waiting for first message")
 
-    try:
-        msg = await zmq_socket.recv_multipart(copy=False)
-        log.info(f"received zmq msg, decoding")
-        yield decode_zmq_message(msg)
-    except zmq.ContextTerminated:
-        log.error("ZMQ context was terminated")
+    while True:
+        try:
+            msg = await zmq_socket.recv_multipart(copy=False)
+            log.info(f"received zmq msg, decoding")
+            yield decode_zmq_message(msg)
+        except zmq.ContextTerminated:
+            log.error("ZMQ context was terminated")
 
 
-async def write_to_h5(msg) -> None:
+def h5_writer_process(queue: culsans.SyncQueue[int]) -> None:
+    parent_log.info("in writer process, starting main loop")
+    while True:
+        element = queue.get()
+        parent_log.info(f"got new element, queue size now: {queue.qsize()}")
+        parent_log.info("sleeping a bit")
+        time.sleep(5)
+    queue.join()
+
+
+async def write_to_h5(msg: ZmqMessage, q: culsans.AsyncQueue[ZmqMessage]) -> None:
     parent_log.info("writing to h5")
+    await q.put(msg)
+    parent_log.info("writing to h5 DONE")
 
 
-async def write_to_udp(msg) -> None:
+async def write_to_udp(msg, udp_socket) -> None:
     parent_log.info("writing to udp")
+
+
+class UdpTransmissionCoordinator:
+    @staticmethod
+    async def from_args(args: Arguments) -> "UdpTransmissionCoordinator":
+        udp_socket = await asyncudp.create_socket(
+            remote_addr=(args.udp_server, args.udp_port)
+        )
+        return UdpTransmissionCoordinator(udp_socket)
+
+    def __init__(self, socket: asyncudp.Socket) -> None:
+        self._socket = socket
+        self._message_id = 1
+
+    async def process_message(self, msg: ZmqMessage) -> None:
+        if not isinstance(msg, ZmqImage):
+            return
+
+        self._socket.sendto(f"{self._message_id}foo".encode(encoding="utf-8"))
+        self._message_id += 1
 
 
 async def main_async() -> None:
     args = Arguments(underscores_to_dashes=True).parse_args()
+
+    h5_queue = culsans.Queue(5)
+    h5_writer_future = asyncio.get_running_loop().run_in_executor(
+        None, h5_writer_process, h5_queue.sync_q
+    )
+
+    udp = await UdpTransmissionCoordinator.from_args(args)
 
     zmq_target = f"tcp://{args.detector_zmq_host}:{args.detector_zmq_port}"
     async for msg in receive_zmq_messages(
@@ -153,10 +200,15 @@ async def main_async() -> None:
         parent_log.bind(zmq_target=zmq_target),
     ):
         parent_log.info(f"decoded zmq message: {msg}")
+
         # Exceptions are propagated here, so any failure leads to
         # immediate cancellation of the whole process. In the end, we
         # might want to be more error tolerant, but for now, leave it.
-        asyncio.gather(write_to_h5(msg), write_to_udp(msg))
+        await asyncio.gather(
+            write_to_h5(msg, h5_queue.async_q), udp.process_message(msg)
+        )
+
+    await h5_writer_future
 
 
 def main() -> None:
@@ -164,4 +216,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn")
     main()
