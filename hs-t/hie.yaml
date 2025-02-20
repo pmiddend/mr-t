@@ -1,0 +1,4 @@
+# I don't know why I need this. It should work automatically, but ok.
+cradle:
+  cabal:
+    component: "hs-t:exe:hs-t"
