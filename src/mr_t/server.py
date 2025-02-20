@@ -150,7 +150,7 @@ async def main_async() -> None:
     receiver = udp_receiver(log=parent_log.bind(system="udp"), sock=sock)
 
     series_id = 1
-    bytes_in_frame = {0: 69321, 1: 69321}
+    bytes_in_frame = {0: 69321}
     with Path("/home/pmidden/Downloads/11064.PDF").open("rb") as input_file:
         file_contents = input_file.read()
 
@@ -165,8 +165,9 @@ async def main_async() -> None:
                         addr,
                     )
                 case UdpPacketRequest(addr, frame_number, start_byte):
+                    PACKET_SIZE = 1000
                     parent_log.info(
-                        f"received packet request, frame {frame_number}, sending {file_contents[start_byte:start_byte+100]}"
+                        f"received packet request, frame {frame_number}, sending {file_contents[start_byte:start_byte+PACKET_SIZE]}"
                     )
                     sock.sendto(
                         encode_udp_reply(
@@ -174,7 +175,9 @@ async def main_async() -> None:
                                 frame_number=frame_number,
                                 start_byte=start_byte,
                                 bytes_in_frame=bytes_in_frame[frame_number],
-                                payload=file_contents[start_byte : start_byte + 100],
+                                payload=file_contents[
+                                    start_byte : start_byte + PACKET_SIZE
+                                ],
                             ),
                         ),
                         addr,
