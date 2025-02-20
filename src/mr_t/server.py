@@ -165,7 +165,7 @@ async def main_async() -> None:
                         addr,
                     )
                 case UdpPacketRequest(addr, frame_number, start_byte):
-                    PACKET_SIZE = 1000
+                    PACKET_SIZE = 10000
                     parent_log.info(
                         f"received packet request, frame {frame_number}, sending {file_contents[start_byte:start_byte+PACKET_SIZE]}"
                     )
