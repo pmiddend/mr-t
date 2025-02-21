@@ -117,8 +117,11 @@ async def receive_zmq_messages(
     zmq_context = zmq.asyncio.Context()  # type: ignore
 
     zmq_socket = zmq_context.socket(zmq.PULL)
-w
-    log.info("connect called; might not be connected yet, waiting for first message")
+    zmq_socket.connect(zmq_target)
+
+    log.info(
+        f"connect to '{zmq_target}' called; might not be connected yet, waiting for first message"
+    )
 
     while True:
         try:

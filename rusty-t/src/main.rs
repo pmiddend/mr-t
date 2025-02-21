@@ -130,13 +130,14 @@ fn udp_ping_pong(socket: &UdpSocket, msg: UdpRequest) -> Result<UdpResponse, std
     let mut buf = vec![0; 65536];
     match socket.recv(&mut buf) {
         Ok(received) => {
-            println!("received {received} bytes {:?}", &buf[..received]);
-	    if buf.len() == 0 {
-		Err(Error::new(ErrorKind::Other, "received nothing"))
-	    } else {
-		buf.resize(received, 0);
-		decode_response(buf)
-	    }
+            // println!("received {received} bytes {:?}", &buf[..received]);
+            info!("received {received} bytes");
+            if buf.len() == 0 {
+                Err(Error::new(ErrorKind::Other, "received nothing"))
+            } else {
+                buf.resize(received, 0);
+                decode_response(buf)
+            }
         }
         Err(e) => {
             println!("recv data failed: {e:?}");
@@ -162,6 +163,10 @@ fn main() {
         add = local_bind_addr
     ));
 
+    socket
+        .set_read_timeout(Some(Duration::from_millis(200)))
+        .expect("couldn't set read timeout for socket");
+
     socket.connect(&args.udp_address).expect(&format!(
         "couldn't connect to {add}",
         add = &args.udp_address
@@ -183,11 +188,12 @@ fn main() {
                                 if Some(payload.series_id) == prior_series_id {
                                     info!("no series: same as last series, waiting");
                                     sleep(Duration::from_secs(2))
-                                }
-                                info!("no series: new series, switching state, waiting");
-                                state = LoopState::InSeries {
-                                    series_id: payload.series_id,
-                                    frame_count: payload.frame_count,
+                                } else {
+                                    info!("no series: new series, switching state, waiting");
+                                    state = LoopState::InSeries {
+                                        series_id: payload.series_id,
+                                        frame_count: payload.frame_count,
+                                    }
                                 }
                             }
                             None => {
@@ -200,8 +206,8 @@ fn main() {
                         }
                     },
                     Err(_) => {
-			sleep(Duration::from_secs(2));
-		    }
+                        sleep(Duration::from_secs(2));
+                    }
                 }
             }
             LoopState::InSeries {
@@ -227,7 +233,9 @@ fn main() {
                             payload,
                         } => {
                             info!("in series: packet repl, switching to in frame");
-			    output_file.write(&payload).expect("cannot write to file for some reason");
+                            output_file
+                                .write(&payload)
+                                .expect("cannot write to file for some reason");
                             state = LoopState::InFrame {
                                 series_id,
                                 frame_count,
@@ -261,12 +269,12 @@ fn main() {
                 };
 
                 if new_current_frame >= frame_count {
-                    info!("in frame: we're finished!");
-		    break;
-                    // state = LoopState::NoSeries {
-                    //     prior_series_id: Some(series_id),
-                    // };
-                    // continue;
+                    // info!("in frame: we're finished!");
+                    // break;
+                    state = LoopState::NoSeries {
+                        prior_series_id: Some(series_id),
+                    };
+                    continue;
                 }
 
                 info!(
@@ -296,7 +304,9 @@ fn main() {
                                 info!("in frame: got start byte {start_byte}, expected {new_start_byte}")
                             } else {
                                 let payload_len = payload.len();
-				output_file.write(&payload).expect("cannot write to file for some reason");
+                                output_file
+                                    .write(&payload)
+                                    .expect("cannot write to file for some reason");
                                 if have_frame_switch {
                                     info!("in frame: frame switch received {payload_len} byte(s)");
                                     state = LoopState::InFrame {

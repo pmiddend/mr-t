@@ -1,6 +1,5 @@
 import asyncio
 from dataclasses import dataclass
-from pathlib import Path
 import struct
 from typing import Any, AsyncIterable, AsyncIterator, TypeAlias, TypeVar
 
@@ -8,11 +7,14 @@ import asyncudp
 import structlog
 from tap import Tap
 
+from mr_t.eiger_zmq import ZmqHeader, ZmqImage, ZmqSeriesEnd, receive_zmq_messages
+
 parent_log = structlog.get_logger()
 
 
 class Arguments(Tap):
     udp_port: int
+    eiger_zmq_host_and_port: str
 
 
 @dataclass(frozen=True)
@@ -37,7 +39,7 @@ class UdpPacketReply:
     frame_number: int
     start_byte: int
     bytes_in_frame: int
-    payload: bytes
+    payload: memoryview
 
 
 UdpRequest: TypeAlias = UdpPing | UdpPacketRequest
@@ -142,48 +144,93 @@ async def merge_iterators(
             btask = _as_task(b)
 
 
+@dataclass
+class CurrentSeries:
+    series_id: int
+    frame_count: int
+    saved_frames: dict[int, memoryview]
+    ended: bool
+
+
 async def main_async() -> None:
     args = Arguments(underscores_to_dashes=True).parse_args()
 
-    sender = dummy_sender(parent_log.bind(system="sender"))
+    sender = receive_zmq_messages(
+        zmq_target=args.eiger_zmq_host_and_port, log=parent_log.bind(system="sender")
+    )
     sock = await asyncudp.create_socket(local_addr=("localhost", args.udp_port))
     receiver = udp_receiver(log=parent_log.bind(system="udp"), sock=sock)
 
-    series_id = 1
-    bytes_in_frame = {0: 69321}
-    with Path("/home/pmidden/Downloads/11064.PDF").open("rb") as input_file:
-        file_contents = input_file.read()
+    last_series_id = 0
+    current_series: CurrentSeries | None = None
+    async for msg in merge_iterators(sender, receiver):
+        match msg:
+            case UdpPing(addr):
+                parent_log.info("received ping, sending pong")
+                sock.sendto(
+                    encode_udp_reply(
+                        UdpPong((current_series.series_id, current_series.frame_count))
+                        if current_series is not None and current_series.saved_frames
+                        else UdpPong(None)
+                    ),
+                    addr,
+                )
+            case UdpPacketRequest(addr, frame_number, start_byte):
+                if current_series is None:
+                    continue
+                this_frame = current_series.saved_frames.get(frame_number)
 
-        async for msg in merge_iterators(sender, receiver):
-            match msg:
-                case UdpPing(addr):
-                    parent_log.info("received ping, sending pong")
-                    sock.sendto(
-                        encode_udp_reply(
-                            UdpPong((series_id, len(bytes_in_frame.keys())))
+                # We might not have received this frame yet (client is faster than server)
+                if this_frame is None:
+                    continue
+
+                PACKET_SIZE = 10000
+                parent_log.info(f"received packet request, frame {frame_number}")
+
+                sock.sendto(
+                    encode_udp_reply(
+                        UdpPacketReply(
+                            frame_number=frame_number,
+                            start_byte=start_byte,
+                            bytes_in_frame=len(this_frame),
+                            payload=this_frame[start_byte : start_byte + PACKET_SIZE],
                         ),
-                        addr,
-                    )
-                case UdpPacketRequest(addr, frame_number, start_byte):
-                    PACKET_SIZE = 10000
-                    parent_log.info(
-                        f"received packet request, frame {frame_number}, sending {file_contents[start_byte:start_byte+PACKET_SIZE]}"
-                    )
-                    sock.sendto(
-                        encode_udp_reply(
-                            UdpPacketReply(
-                                frame_number=frame_number,
-                                start_byte=start_byte,
-                                bytes_in_frame=bytes_in_frame[frame_number],
-                                payload=file_contents[
-                                    start_byte : start_byte + PACKET_SIZE
-                                ],
-                            ),
-                        ),
-                        addr,
-                    )
-                case _:
-                    parent_log.info(f"received something else: {msg}")
+                    ),
+                    addr,
+                )
+
+                saved_frame_ids = list(current_series.saved_frames)
+                for fid in saved_frame_ids:
+                    if fid < frame_number:
+                        parent_log.info(f"deleting old frame {fid}")
+                        current_series.saved_frames.pop(fid)
+            case ZmqHeader(appendix, config, series_id):
+                assert config is not None
+                nimages = config.get("nimages")
+                ntrigger = config.get("ntrigger")
+                assert nimages is not None and ntrigger is not None
+                assert isinstance(nimages, int) and isinstance(ntrigger, int)
+                current_series = CurrentSeries(
+                    series_id=last_series_id + 1,
+                    frame_count=max(nimages, ntrigger),
+                    saved_frames={},
+                    ended=False,
+                )
+                last_series_id = current_series.series_id
+                parent_log.info(f"series start, new ID {current_series.series_id}")
+            case ZmqImage(data):
+                assert current_series is not None
+                new_frame_id = (
+                    max(current_series.saved_frames) + 1
+                    if current_series.saved_frames
+                    else 0
+                )
+                current_series.saved_frames[new_frame_id] = data
+                parent_log.info(f"image {new_frame_id} received")
+            case ZmqSeriesEnd():
+                parent_log.info(f"series ended")
+                assert current_series is not None
+                current_series.ended = True
 
 
 def main() -> None:
