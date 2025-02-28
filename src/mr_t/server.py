@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 import struct
+import sys
 from typing import Any, AsyncIterable, AsyncIterator, TypeAlias, TypeVar
 
 import asyncudp
@@ -108,7 +109,8 @@ async def udp_receiver(
 ) -> AsyncIterator[UdpRequest]:
     while True:
         data, addr = await sock.recvfrom()
-        log.info(f"received {data} from {addr}")
+        # This is way too much information, logging the raw output
+        # log.info(f"received {data} from {addr}")
         assert isinstance(data, bytes)
         decoded = decode_udp_request(data, addr)
         if decoded is not None:
@@ -156,7 +158,7 @@ async def main_async() -> None:
     args = Arguments(underscores_to_dashes=True).parse_args()
 
     sender = receive_zmq_messages(
-        zmq_target=args.eiger_zmq_host_and_port, log=parent_log.bind(system="sender")
+        zmq_target=args.eiger_zmq_host_and_port, log=parent_log.bind(system="eiger")
     )
     sock = await asyncudp.create_socket(local_addr=("localhost", args.udp_port))
     receiver = udp_receiver(log=parent_log.bind(system="udp"), sock=sock)
@@ -231,6 +233,12 @@ async def main_async() -> None:
                 parent_log.info(f"series ended")
                 assert current_series is not None
                 current_series.ended = True
+        if current_series is not None:
+            sys.stderr.write(
+                f"\r sid {current_series.series_id: >4} fc {len(current_series.saved_frames.keys())}"
+            )
+        else:
+            sys.stderr.write(f"\rno series")
 
 
 def main() -> None:

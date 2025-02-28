@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io::stdout;
 use std::io::Cursor;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -140,7 +141,7 @@ fn udp_ping_pong(socket: &UdpSocket, msg: UdpRequest) -> Result<UdpResponse, std
             }
         }
         Err(e) => {
-            println!("recv data failed: {e:?}");
+            info!("recv data failed: {e:?}");
             Err(e)
         }
     }
@@ -180,6 +181,10 @@ fn main() {
     loop {
         match state {
             LoopState::NoSeries { prior_series_id } => {
+		{
+		    let mut stdout = stdout().lock();
+		    let _ = stdout.write_all(b"hello\n");
+		}
                 info!("no series, sending ping");
                 match udp_ping_pong(&socket, UdpRequest::UdpPing) {
                     Ok(v) => match v {
