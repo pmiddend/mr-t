@@ -53,6 +53,7 @@ enum UdpResponse {
         pong_payload: Option<PongPayload>,
     },
     UdpPacketReply {
+        premature_end_frame: u32,
         frame_number: u32,
         start_byte: u32,
         bytes_in_frame: u32,
@@ -105,6 +106,7 @@ fn decode_response(bytes: Vec<u8>) -> Result<UdpResponse, std::io::Error> {
             });
         }
         3 => {
+            let premature_end_frame = reader.read_u32::<BigEndian>()?;
             let frame_number = reader.read_u32::<BigEndian>()?;
             let start_byte = reader.read_u32::<BigEndian>()?;
             let bytes_in_frame = reader.read_u32::<BigEndian>()?;
@@ -112,6 +114,7 @@ fn decode_response(bytes: Vec<u8>) -> Result<UdpResponse, std::io::Error> {
             let mut payload: Vec<u8> = vec![];
             reader.read_to_end(&mut payload)?;
             return Ok(UdpResponse::UdpPacketReply {
+                premature_end_frame,
                 frame_number,
                 start_byte,
                 bytes_in_frame,
@@ -181,10 +184,10 @@ fn main() {
     loop {
         match state {
             LoopState::NoSeries { prior_series_id } => {
-		{
-		    let mut stdout = stdout().lock();
-		    let _ = stdout.write_all(b"hello\n");
-		}
+                // {
+                //     let mut stdout = stdout().lock();
+                //     let _ = stdout.write_all(b"hello\n");
+                // }
                 info!("no series, sending ping");
                 match udp_ping_pong(&socket, UdpRequest::UdpPing) {
                     Ok(v) => match v {
@@ -232,21 +235,33 @@ fn main() {
                             info!("in series: received stray pong");
                         }
                         UdpResponse::UdpPacketReply {
+                            premature_end_frame,
                             frame_number,
                             start_byte: _,
                             bytes_in_frame,
                             payload,
                         } => {
-                            info!("in series: packet repl, switching to in frame");
-                            output_file
-                                .write(&payload)
-                                .expect("cannot write to file for some reason");
-                            state = LoopState::InFrame {
-                                series_id,
-                                frame_count,
-                                current_frame: frame_number,
-                                current_frame_total_bytes: bytes_in_frame,
-                                current_frame_byte: payload.len() as u32,
+                            if premature_end_frame > 0 {
+                                info!("in series: premature end");
+                                state = LoopState::NoSeries {
+                                    prior_series_id: Some(series_id),
+                                }
+				
+                            } else if bytes_in_frame == 0 {
+				info!("in series: frame {frame_number} not there yet, waiting some more")
+			    } else {
+				
+                                info!("in series: packet reply, switching to in frame");
+                                output_file
+                                    .write(&payload)
+                                    .expect("cannot write to file for some reason");
+                                state = LoopState::InFrame {
+                                    series_id,
+                                    frame_count,
+                                    current_frame: frame_number,
+                                    current_frame_total_bytes: bytes_in_frame,
+                                    current_frame_byte: payload.len() as u32,
+                                }
                             }
                         }
                     },
@@ -293,47 +308,60 @@ fn main() {
                         start_byte: new_start_byte,
                     },
                 ) {
-                    Ok(v) => match v {
-                        UdpResponse::UdpPong { .. } => {
-                            info!("in frame: received stray pong");
-                        }
-                        UdpResponse::UdpPacketReply {
-                            frame_number,
-                            start_byte,
-                            bytes_in_frame,
-                            payload,
-                        } => {
-                            if frame_number != new_current_frame {
-                                info!("in frame: got frame {frame_number}, expected {new_current_frame}")
-                            } else if start_byte != new_start_byte {
-                                info!("in frame: got start byte {start_byte}, expected {new_start_byte}")
-                            } else {
-                                let payload_len = payload.len();
-                                output_file
-                                    .write(&payload)
-                                    .expect("cannot write to file for some reason");
-                                if have_frame_switch {
-                                    info!("in frame: frame switch received {payload_len} byte(s)");
-                                    state = LoopState::InFrame {
-                                        series_id,
-                                        frame_count,
-                                        current_frame: new_current_frame,
-                                        current_frame_total_bytes: bytes_in_frame,
-                                        current_frame_byte: payload_len as u32,
+                    Ok(v) => {
+                        match v {
+                            UdpResponse::UdpPong { .. } => {
+                                info!("in frame: received stray pong");
+                            }
+                            UdpResponse::UdpPacketReply {
+                                premature_end_frame,
+                                frame_number,
+                                start_byte,
+                                bytes_in_frame,
+                                payload,
+                            } => {
+                                if premature_end_frame > 0 {
+                                    info!("in frame: premature end");
+                                    state = LoopState::NoSeries {
+                                        prior_series_id: Some(series_id),
                                     }
+                                } else if bytes_in_frame == 0 {
+				    info!("in frame: frame {frame_number} not there yet, waiting some more")
                                 } else {
-                                    info!("in frame: received {payload_len} byte(s)");
-                                    state = LoopState::InFrame {
-                                        series_id,
-                                        frame_count,
-                                        current_frame: new_current_frame,
-                                        current_frame_total_bytes: bytes_in_frame,
-                                        current_frame_byte: current_frame_byte + payload_len as u32,
+                                    if frame_number != new_current_frame {
+                                        info!("in frame: got frame {frame_number}, expected {new_current_frame}")
+                                    } else if start_byte != new_start_byte {
+                                        info!("in frame: got start byte {start_byte}, expected {new_start_byte}")
+                                    } else {
+                                        let payload_len = payload.len();
+                                        output_file
+                                            .write(&payload)
+                                            .expect("cannot write to file for some reason");
+                                        if have_frame_switch {
+                                            info!("in frame: frame switch received {payload_len} byte(s)");
+                                            state = LoopState::InFrame {
+                                                series_id,
+                                                frame_count,
+                                                current_frame: new_current_frame,
+                                                current_frame_total_bytes: bytes_in_frame,
+                                                current_frame_byte: payload_len as u32,
+                                            }
+                                        } else {
+                                            info!("in frame: received {payload_len} byte(s)");
+                                            state = LoopState::InFrame {
+                                                series_id,
+                                                frame_count,
+                                                current_frame: new_current_frame,
+                                                current_frame_total_bytes: bytes_in_frame,
+                                                current_frame_byte: current_frame_byte
+                                                    + payload_len as u32,
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
-                    },
+                    }
                     Err(_) => {}
                 }
             }
