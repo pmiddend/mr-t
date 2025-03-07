@@ -37,6 +37,7 @@ class UdpPacketRequest:
 
 @dataclass(frozen=True)
 class UdpPacketReply:
+    premature_end_frame: int
     frame_number: int
     start_byte: int
     bytes_in_frame: int
@@ -66,9 +67,18 @@ def encode_udp_reply(r: UdpReply) -> bytes:  # type: ignore
             return struct.pack(">BII", 1, 0, 0)
         case UdpPong(series_and_frame=(series_id, frame_count)):
             return struct.pack(">BII", 1, series_id, frame_count)
-        case UdpPacketReply(frame_number, start_byte, bytes_in_frame, payload):
+        case UdpPacketReply(
+            premature_end_frame, frame_number, start_byte, bytes_in_frame, payload
+        ):
             return (
-                struct.pack(">BIII", 3, frame_number, start_byte, bytes_in_frame)
+                struct.pack(
+                    ">BIIII",
+                    3,
+                    premature_end_frame,
+                    frame_number,
+                    start_byte,
+                    bytes_in_frame,
+                )
                 + payload
             )
 
@@ -151,6 +161,14 @@ class CurrentSeries:
     series_id: int
     frame_count: int
     saved_frames: dict[int, memoryview]
+    # Important for the case of a premature abort. For example, say
+    # the detector delivered frame 10 (completely), and was aborted
+    # afterwards. The client connecting to Mr. T would get frame 10,
+    # and then start retrieving frame 11. This doesn't exist, of
+    # course, but the client needs a way to distinguish that case from
+    # "doesn't exist and will never exist because we aborted the
+    # series".
+    last_complete_frame: int
     ended: bool
 
 
@@ -182,8 +200,39 @@ async def main_async() -> None:
                     continue
                 this_frame = current_series.saved_frames.get(frame_number)
 
-                # We might not have received this frame yet (client is faster than server)
+                # We might not have received this frame yet (client is
+                # faster than server), or we will never receive it due
+                # to an abort
+                if this_frame is None and current_series.ended:
+                    sock.sendto(
+                        encode_udp_reply(
+                            UdpPacketReply(
+                                premature_end_frame=current_series.last_complete_frame,
+                                frame_number=frame_number,
+                                start_byte=start_byte,
+                                bytes_in_frame=0,
+                                payload=memoryview(bytearray()),
+                            ),
+                        ),
+                        addr,
+                    )
+                    continue
+
+                # This is the case of a client that's too fast for the server
                 if this_frame is None:
+                    sock.sendto(
+                        encode_udp_reply(
+                            UdpPacketReply(
+                                premature_end_frame=0,
+                                frame_number=frame_number,
+                                start_byte=start_byte,
+                                # This signifies the frame isn't there yet
+                                bytes_in_frame=0,
+                                payload=memoryview(bytearray()),
+                            ),
+                        ),
+                        addr,
+                    )
                     continue
 
                 PACKET_SIZE = 10000
@@ -192,6 +241,7 @@ async def main_async() -> None:
                 sock.sendto(
                     encode_udp_reply(
                         UdpPacketReply(
+                            premature_end_frame=0,
                             frame_number=frame_number,
                             start_byte=start_byte,
                             bytes_in_frame=len(this_frame),
@@ -217,6 +267,7 @@ async def main_async() -> None:
                     frame_count=max(nimages, ntrigger),
                     saved_frames={},
                     ended=False,
+                    last_complete_frame=0,
                 )
                 last_series_id = current_series.series_id
                 parent_log.info(f"series start, new ID {current_series.series_id}")
@@ -227,6 +278,7 @@ async def main_async() -> None:
                     if current_series.saved_frames
                     else 0
                 )
+                current_series.last_complete_frame = new_frame_id
                 current_series.saved_frames[new_frame_id] = data
                 parent_log.info(f"image {new_frame_id} received")
             case ZmqSeriesEnd():
