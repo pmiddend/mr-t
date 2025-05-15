@@ -257,7 +257,7 @@ async def main_async() -> None:
                     if fid < frame_number:
                         parent_log.info(f"deleting old frame {fid}")
                         current_series.saved_frames.pop(fid)
-            case ZmqHeader(config):
+            case ZmqHeader(series_id, config, appendix):
                 if config is None:
                     raise Exception(
                         "got a ZMQ header message, but have no config in there"
