@@ -52,11 +52,11 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
     htype = header["htype"]
 
     if htype == "dimage-1.0":
-        meta = json.loads(parts[1].bytes.decode())
-        shape = tuple(meta["shape"][::-1])  # Eiger shape order is reversed
-        dtype = meta["type"]
-        size = meta["size"]
-        encoding = meta["encoding"]
+        # meta = json.loads(parts[1].bytes.decode())
+        # shape = tuple(meta["shape"][::-1])  # Eiger shape order is reversed
+        # dtype = meta["type"]
+        # size = meta["size"]
+        # encoding = meta["encoding"]
         # get a memoryview instead of a bytes copy
         data = parts[2].buffer
         config = json.loads(parts[3].bytes.decode())
@@ -82,21 +82,27 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
             elif n_parts == 2:
                 has_appendix = True
             else:
-                raise ValueError("Unexpected number of parts: {}".format(n_parts))
+                raise ValueError(
+                    'Unexpected number of parts for "none" detail: {}'.format(n_parts)
+                )
         elif detail == "basic":
             if n_parts == 2:
                 has_appendix = False
             elif n_parts == 3:
                 has_appendix = True
             else:
-                raise ValueError("Unexpected number of parts: {}".format(n_parts))
+                raise ValueError(
+                    'Unexpected number of parts for "basic" detail: {}'.format(n_parts)
+                )
         elif detail == "all":
             if n_parts == 8:
                 has_appendix = False
             elif n_parts == 9:
                 has_appendix = True
             else:
-                raise ValueError("Unexpected number of parts: {}".format(n_parts))
+                raise ValueError(
+                    'Unexpected number of parts for "all" detail: {}'.format(n_parts)
+                )
 
         config = (
             json.loads(parts[1].bytes.decode()) if detail in ["basic", "all"] else None
@@ -126,7 +132,7 @@ async def receive_zmq_messages(
     while True:
         try:
             msg = await zmq_socket.recv_multipart(copy=False)
-            log.info(f"received zmq msg, decoding")
+            log.info("received zmq msg, decoding")
             yield decode_zmq_message(msg)
         except zmq.ContextTerminated:
             log.error("ZMQ context was terminated")

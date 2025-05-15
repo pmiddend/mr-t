@@ -1,7 +1,7 @@
 import culsans
 import structlog
 
-from mr_t.eiger_zmq import ZmqMessage
+from mr_t.eiger_stream1 import ZmqMessage
 
 parent_log = structlog.get_logger()
 
@@ -9,7 +9,7 @@ parent_log = structlog.get_logger()
 def h5_writer_process(queue: culsans.SyncQueue[int]) -> None:
     parent_log.info("in writer process, starting main loop")
     while True:
-        element = queue.get()
+        element = queue.get()  # noqa: F841
         parent_log.info(f"got new element, queue size now: {queue.qsize()}")
         parent_log.info("sleeping a bit")
         # time.sleep(5)

@@ -2,13 +2,14 @@ import asyncio
 from dataclasses import dataclass
 import struct
 import sys
+import logging
 from typing import Any, AsyncIterable, AsyncIterator, TypeAlias, TypeVar
 
 import asyncudp
 import structlog
 from tap import Tap
 
-from mr_t.eiger_zmq import ZmqHeader, ZmqImage, ZmqSeriesEnd, receive_zmq_messages
+from mr_t.eiger_stream1 import ZmqHeader, ZmqImage, ZmqSeriesEnd, receive_zmq_messages
 
 parent_log = structlog.get_logger()
 
@@ -186,7 +187,7 @@ async def main_async() -> None:
     async for msg in merge_iterators(sender, receiver):
         match msg:
             case UdpPing(addr):
-                parent_log.info("received ping, sending pong")
+                parent_log.debug("received ping, sending pong")
                 sock.sendto(
                     encode_udp_reply(
                         UdpPong((current_series.series_id, current_series.frame_count))
@@ -236,7 +237,7 @@ async def main_async() -> None:
                     continue
 
                 PACKET_SIZE = 10000
-                parent_log.info(f"received packet request, frame {frame_number}")
+                parent_log.debug(f"received packet request, frame {frame_number}")
 
                 sock.sendto(
                     encode_udp_reply(
@@ -256,15 +257,18 @@ async def main_async() -> None:
                     if fid < frame_number:
                         parent_log.info(f"deleting old frame {fid}")
                         current_series.saved_frames.pop(fid)
-            case ZmqHeader(appendix, config, series_id):
-                assert config is not None
+            case ZmqHeader(config):
+                if config is None:
+                    raise Exception(
+                        "got a ZMQ header message, but have no config in there"
+                    )
                 nimages = config.get("nimages")
                 ntrigger = config.get("ntrigger")
                 assert nimages is not None and ntrigger is not None
                 assert isinstance(nimages, int) and isinstance(ntrigger, int)
                 current_series = CurrentSeries(
                     series_id=last_series_id + 1,
-                    frame_count=max(nimages, ntrigger),
+                    frame_count=nimages * ntrigger,
                     saved_frames={},
                     ended=False,
                     last_complete_frame=0,
@@ -282,7 +286,7 @@ async def main_async() -> None:
                 current_series.saved_frames[new_frame_id] = data
                 parent_log.info(f"image {new_frame_id} received")
             case ZmqSeriesEnd():
-                parent_log.info(f"series ended")
+                parent_log.info("series ended")
                 assert current_series is not None
                 current_series.ended = True
         if current_series is not None:
@@ -290,10 +294,13 @@ async def main_async() -> None:
                 f"\r sid {current_series.series_id: >4} fc {len(current_series.saved_frames.keys())}"
             )
         else:
-            sys.stderr.write(f"\rno series")
+            sys.stderr.write("\rno series")
 
 
 def main() -> None:
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO)
+    )
     asyncio.run(main_async())
 
 
