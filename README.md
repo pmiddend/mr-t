@@ -14,10 +14,20 @@ Code formatting is done with [ruff](https://docs.astral.sh/ruff/), just use `ruf
 If you have uv installed (see above) running the main program should be as easy as:
 
 ```
-uv run mr_t --detector-zmq-host $host
+uv run mr_t --eiger-zmq-host-and-port $host --udp-host localhost --udp-port 9000
 ```
 
-Which will receive images from `$host:9999`.
+Which will receive images from the Dectris detector `$host:9999` and also listen for UDP messages on `localhost:9000`.
+
+You can also just use plain Python, of course:
+
+```
+python src/mr_t/server.py --eiger-zmq-host-and-port $host --udp-host localhost --udp-port 9000
+```
+
+Note that you have to install the dependencies mentioned in `pyproject.toml` beforehand (to a `venv`, for example).
+
+There is a configurable `--frame-cache-limit` which, if you set it, will limit the number of frames held in memory to be no higher than this number. Meaning, the ZeroMQ messages will be held until the receiver picks them up.
 
 ## How it works
 

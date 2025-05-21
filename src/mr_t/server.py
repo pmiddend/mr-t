@@ -23,7 +23,9 @@ class Arguments(Tap):
     udp_port: int
     udp_host: str
     eiger_zmq_host_and_port: str
-    frame_cache_limit: Optional[int] = None
+    frame_cache_limit: Optional[  # Limit the number of incoming ZeroMQ images to this number (can prevent memory overruns)
+        int
+    ] = None
 
 
 @dataclass(frozen=True)
