@@ -19,6 +19,46 @@ uv run mr_t --detector-zmq-host $host
 
 Which will receive images from `$host:9999`.
 
+## How it works
+
+### Main loop
+
+In [server.py](https://github.com/pmiddend/mr-t/blob/main/src/mr_t/server.py), Mr. T will open a UDP socket as a server (a listen socket) on startup. It will also open a ZeroMQ socket to the detector and listen for messages itself. In Python, both the listening on ZeroMQ and on UDP are implemented as `async` functions returning `AsyncIterator[UdpRequest]` and `AsyncIterator[ZmqMessage]`, respectively, so that you can iterate over them via:
+
+```python
+async for msg in iterator:
+   ...
+```
+
+The `merge_iterators` function will merge both iterators and return a union of both data types, so you can listen for both types of messages.
+
+This message loops keeps two pieces of state:
+
+1. The *current image series* (`CurrentSeries` in the code), which is optional, since there might no be a current series. It consists of the from the detector, the number of frames in it, the `saved_frames` (which is a dictionary from frame number to raw image data), the last complete frame (see below) and whether it officially ended.
+2. The *last series ID*, which is used as a counter (new series always get the last ID + 1)
+
+### UDP messages
+
+Given a *UDP ping*, we simply return a *pong* with the current series information if we have it, or `None`.
+
+Given a *UDP packet request* for a frame `frameno`, there are a few considerations:
+
+- If we are not in a series at all, we ignore the packet request completely.
+- If the frame requested is not in the current series' `saved_frames` cache, send a reply with no bytes in it. The client is supposed to ignore this.
+- If we get a packet request for an unknown frame (like in the bullet point above) and the current series has ended, then send a reply with `premature_end_frame` set to the last complete frame, indicating to the client to stop requesting new frames.
+- Otherwise, we have data to send to the UDP client. Send a reply with the requested frame slice.
+- Afterwards, check if we have frames in `saved_frames` that are smaller than the requested frame and delete them.
+
+### ZeroMQ messages
+
+A *ZmqHeader* message has to contain a `config` dictionary, which should be there if the `header_detail` for the stream subsystem of the Dectris detector is set to `all` or `basic`. We need the config because it gives us the `nimages` and `ntrigger` values, determining how many frames we have in each series. We then will the `CurrentSeries` structure with a new series ID (monotonically increasing the last one, starting at 0) and mostly zero values. We also store the new series ID value in `last_series_id`, so that the counter can increase next time.
+
+A *ZmqImage* message only contains a `memoryview` with the whole frame's data (there is a per-image `config` that you can set, too, but we don't use it). The frame's ID we generate ourselves by taking the last frame's number in the `saved_frames` dictionary and increasing by 1 (or taking 0 if we don't have any frames yet). We also remember the ID as the last complete frame (which is used for premature end of series).
+
+A *ZmqSeriesEnd* simply sets the current series' `ended` boolean to `True`.
+
+See the [latest Dectris Simplon API](https://media.dectris.com/filer_public/6d/57/6d5779b4-2c8c-45a7-8792-6ef447f1ddde/simplon_apireference_v1p8.pdf).
+
 ## UDP protocol
 
 Every UDP message starts with the _message type_ (one byte) and then there's the payload which depends on the message being sent. Generally, numbers are sent in _big endian_.

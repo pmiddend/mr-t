@@ -16,6 +16,7 @@ parent_log = structlog.get_logger()
 
 class Arguments(Tap):
     udp_port: int
+    udp_host: str
     eiger_zmq_host_and_port: str
 
 
@@ -157,11 +158,17 @@ async def merge_iterators(
             btask = _as_task(b)
 
 
+FrameNumber = int
+
+
 @dataclass
 class CurrentSeries:
+    # This is *not* the series ID from the detector, but rather our
+    # own, which is strictly monotonically increasing.
     series_id: int
+    # How many frames in the current series
     frame_count: int
-    saved_frames: dict[int, memoryview]
+    saved_frames: dict[FrameNumber, memoryview]
     # Important for the case of a premature abort. For example, say
     # the detector delivered frame 10 (completely), and was aborted
     # afterwards. The client connecting to Mr. T would get frame 10,
@@ -179,7 +186,7 @@ async def main_async() -> None:
     sender = receive_zmq_messages(
         zmq_target=args.eiger_zmq_host_and_port, log=parent_log.bind(system="eiger")
     )
-    sock = await asyncudp.create_socket(local_addr=("localhost", args.udp_port))
+    sock = await asyncudp.create_socket(local_addr=(args.udp_host, args.udp_port))
     receiver = udp_receiver(log=parent_log.bind(system="udp"), sock=sock)
 
     last_series_id = 0
@@ -198,6 +205,9 @@ async def main_async() -> None:
                 )
             case UdpPacketRequest(addr, frame_number, start_byte):
                 if current_series is None:
+                    parent_log.warning(
+                        f"request for frame number {frame_number} ignored, not in series"
+                    )
                     continue
                 this_frame = current_series.saved_frames.get(frame_number)
 
@@ -239,6 +249,11 @@ async def main_async() -> None:
                 PACKET_SIZE = 10000
                 parent_log.debug(f"received packet request, frame {frame_number}")
 
+                if start_byte > len(this_frame):
+                    parent_log.warning(
+                        f"start byte {start_byte} is after last byte in frame: {len(this_frame)}"
+                    )
+
                 sock.sendto(
                     encode_udp_reply(
                         UdpPacketReply(
@@ -260,7 +275,7 @@ async def main_async() -> None:
             case ZmqHeader(series_id, config, appendix):
                 if config is None:
                     raise Exception(
-                        "got a ZMQ header message, but have no config in there"
+                        'Got a ZMQ header message, but have no config values; have you configured "header_detail" to be "none"? It has to be either "basic" or "all" (preferably "basic").'
                     )
                 nimages = config.get("nimages")
                 ntrigger = config.get("ntrigger")
@@ -276,6 +291,10 @@ async def main_async() -> None:
                 last_series_id = current_series.series_id
                 parent_log.info(f"series start, new ID {current_series.series_id}")
             case ZmqImage(data):
+                if current_series is None:
+                    parent_log.warning(
+                        "got a ZmqImage message but we have no series, what the hell went wrong here?"
+                    )
                 assert current_series is not None
                 new_frame_id = (
                     max(current_series.saved_frames) + 1
@@ -286,12 +305,16 @@ async def main_async() -> None:
                 current_series.saved_frames[new_frame_id] = data
                 parent_log.info(f"image {new_frame_id} received")
             case ZmqSeriesEnd():
+                if current_series is None:
+                    parent_log.warning(
+                        "got a ZmqSeriesEnd message but we have no series, what the hell went wrong here?"
+                    )
                 parent_log.info("series ended")
                 assert current_series is not None
                 current_series.ended = True
         if current_series is not None:
             sys.stderr.write(
-                f"\r sid {current_series.series_id: >4} fc {len(current_series.saved_frames.keys())}"
+                f"\r series ID {current_series.series_id: >4} cached frames: {len(current_series.saved_frames.keys())}"
             )
         else:
             sys.stderr.write("\rno series")
