@@ -1,6 +1,7 @@
+import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, TypeAlias
+from typing import Any, AsyncIterator, Callable, TypeAlias
 
 import structlog
 import zmq
@@ -118,7 +119,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
 
 
 async def receive_zmq_messages(
-    zmq_target: str, log: structlog.BoundLogger
+    zmq_target: str, log: structlog.BoundLogger, cache_full: Callable[[], bool]
 ) -> AsyncIterator[ZmqMessage]:
     zmq_context = zmq.asyncio.Context()  # type: ignore
 
@@ -130,6 +131,9 @@ async def receive_zmq_messages(
     )
 
     while True:
+        if cache_full():
+            await asyncio.sleep(0.5)
+            continue
         try:
             msg = await zmq_socket.recv_multipart(copy=False)
             log.info("received zmq msg, decoding")

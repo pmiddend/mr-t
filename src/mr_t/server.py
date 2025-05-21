@@ -3,13 +3,18 @@ from dataclasses import dataclass
 import struct
 import sys
 import logging
-from typing import Any, AsyncIterable, AsyncIterator, TypeAlias, TypeVar
+from typing import Any, AsyncIterable, AsyncIterator, Optional, TypeAlias, TypeVar
 
 import asyncudp
 import structlog
 from tap import Tap
 
-from mr_t.eiger_stream1 import ZmqHeader, ZmqImage, ZmqSeriesEnd, receive_zmq_messages
+from mr_t.eiger_stream1 import (
+    ZmqHeader,
+    ZmqImage,
+    ZmqSeriesEnd,
+    receive_zmq_messages,
+)
 
 parent_log = structlog.get_logger()
 
@@ -18,6 +23,7 @@ class Arguments(Tap):
     udp_port: int
     udp_host: str
     eiger_zmq_host_and_port: str
+    frame_cache_limit: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -183,14 +189,18 @@ class CurrentSeries:
 async def main_async() -> None:
     args = Arguments(underscores_to_dashes=True).parse_args()
 
+    current_series: CurrentSeries | None = None
     sender = receive_zmq_messages(
-        zmq_target=args.eiger_zmq_host_and_port, log=parent_log.bind(system="eiger")
+        zmq_target=args.eiger_zmq_host_and_port,
+        log=parent_log.bind(system="eiger"),
+        cache_full=lambda: len(current_series.saved_frames) > args.frame_cache_limit
+        if current_series is not None and args.frame_cache_limit is not None
+        else False,
     )
     sock = await asyncudp.create_socket(local_addr=(args.udp_host, args.udp_port))
     receiver = udp_receiver(log=parent_log.bind(system="udp"), sock=sock)
 
     last_series_id = 0
-    current_series: CurrentSeries | None = None
     async for msg in merge_iterators(sender, receiver):
         match msg:
             case UdpPing(addr):
