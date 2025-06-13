@@ -3,7 +3,16 @@ from dataclasses import dataclass
 import struct
 import sys
 import logging
-from typing import Any, AsyncIterable, AsyncIterator, Optional, TypeAlias, TypeVar
+from typing import (
+    Any,
+    AsyncIterable,
+    AsyncIterator,
+    Callable,
+    Optional,
+    TypeAlias,
+    TypeVar,
+)
+from pathlib import Path
 
 import asyncudp
 import structlog
@@ -15,6 +24,7 @@ from mr_t.eiger_stream1 import (
     ZmqSeriesEnd,
     receive_zmq_messages,
 )
+from mr_t.h5 import receive_h5_messages
 
 parent_log = structlog.get_logger()
 
@@ -22,7 +32,12 @@ parent_log = structlog.get_logger()
 class Arguments(Tap):
     udp_port: int
     udp_host: str
-    eiger_zmq_host_and_port: str
+    eiger_zmq_host_and_port: Optional[str] = (  # host:port of the Eiger ZMQ interface
+        None
+    )
+    input_h5_file: Optional[  # hdf5 file to feed into Mr. T to mock the detector
+        Path
+    ] = None
     frame_cache_limit: Optional[  # Limit the number of incoming ZeroMQ images to this number (can prevent memory overruns)
         int
     ] = None
@@ -191,13 +206,35 @@ class CurrentSeries:
 async def main_async() -> None:
     args = Arguments(underscores_to_dashes=True).parse_args()
 
+    if args.eiger_zmq_host_and_port is None and args.input_h5_file is None:
+        sys.stderr.write(
+            "invalid arguments: specify either an Eiger ZMQ host and port, or an H5 file to use"
+        )
+        sys.exit(1)
+    if args.eiger_zmq_host_and_port is not None and args.input_h5_file is not None:
+        sys.stderr.write(
+            "invalid arguments: specify either an Eiger ZMQ host and port, or an H5 file to use, but not both!"
+        )
+        sys.exit(2)
+
     current_series: CurrentSeries | None = None
-    sender = receive_zmq_messages(
-        zmq_target=args.eiger_zmq_host_and_port,
-        log=parent_log.bind(system="eiger"),
-        cache_full=lambda: len(current_series.saved_frames) > args.frame_cache_limit
+    cache_full: Callable[[], bool] = (
+        lambda: len(current_series.saved_frames) > args.frame_cache_limit
         if current_series is not None and args.frame_cache_limit is not None
-        else False,
+        else False
+    )
+    sender = (
+        receive_zmq_messages(
+            zmq_target=args.eiger_zmq_host_and_port,
+            log=parent_log.bind(system="eiger"),
+            cache_full=cache_full,
+        )
+        if args.eiger_zmq_host_and_port is not None
+        else receive_h5_messages(
+            args.input_h5_file,  # type: ignore
+            log=parent_log.bind(system="5"),
+            cache_full=cache_full,
+        )
     )
     sock = await asyncudp.create_socket(local_addr=(args.udp_host, args.udp_port))
     receiver = udp_receiver(log=parent_log.bind(system="udp"), sock=sock)

@@ -1,22 +1,29 @@
-import culsans
+import asyncio
+from pathlib import Path
+import h5py
+from typing import AsyncIterator, Callable
 import structlog
 
-from mr_t.eiger_stream1 import ZmqMessage
+from mr_t.eiger_stream1 import ZmqHeader, ZmqImage, ZmqMessage, ZmqSeriesEnd
 
 parent_log = structlog.get_logger()
 
 
-def h5_writer_process(queue: culsans.SyncQueue[int]) -> None:
-    parent_log.info("in writer process, starting main loop")
-    while True:
-        element = queue.get()  # noqa: F841
-        parent_log.info(f"got new element, queue size now: {queue.qsize()}")
-        parent_log.info("sleeping a bit")
-        # time.sleep(5)
-    queue.join()
+async def receive_h5_messages(
+    input_file: Path, log: structlog.BoundLogger, cache_full: Callable[[], bool]
+) -> AsyncIterator[ZmqMessage]:
+    log.info(f"begin reading frames from file {input_file}")
 
-
-async def write_to_h5(msg: ZmqMessage, q: culsans.AsyncQueue[ZmqMessage]) -> None:
-    parent_log.info("writing to h5")
-    await q.put(msg)
-    parent_log.info("writing to h5 DONE")
+    with h5py.File(input_file, "r") as f:
+        dataset = f["entry/data/data"]
+        assert isinstance(dataset, h5py.Dataset)
+        frame_count = len(dataset)
+        yield ZmqHeader(
+            series_id="1", config={"nimages": frame_count, "ntrigger": 1}, appendix=None
+        )
+        for frame_number in range(0, frame_count):
+            if cache_full():
+                await asyncio.sleep(0.5)
+                continue
+            yield ZmqImage(dataset[frame_number][:].tobytes())
+        yield ZmqSeriesEnd()

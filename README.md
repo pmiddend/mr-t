@@ -9,7 +9,7 @@ This project uses [uv](https://docs.astral.sh/uv/) to manage its dependencies. I
 
 Code formatting is done with [ruff](https://docs.astral.sh/ruff/), just use `ruff format src`.
 
-## Running mr-t
+## Running mr-t – normal mode
 
 If you have uv installed (see above) running the main program should be as easy as:
 
@@ -28,6 +28,18 @@ python src/mr_t/server.py --eiger-zmq-host-and-port $host --udp-host localhost -
 Note that you have to install the dependencies mentioned in `pyproject.toml` beforehand (to a `venv`, for example).
 
 There is a configurable `--frame-cache-limit` which, if you set it, will limit the number of frames held in memory to be no higher than this number. Meaning, the ZeroMQ messages will be held until the receiver picks them up.
+
+## Running mr-t — simulation
+
+If you already have a finished image series stored in an HDF5 file, you can tell mr-t to read images from this file, instead of waiting for images via ZMQ. A sample command line looks like this:
+
+```
+uv run mr_t --input-h5-file ~/178_data-00000.nx5 --frame-cache-limit 5 --udp-host localhost --udp-port 9000
+```
+
+Note that in addition to `--input-h5-file` we are passing `--frame-cache-limit 5`. This will read at most 5 frames from the HDF5 file and wait until the other side (the FPGA) has actually pulled images from this cache. If you don't do this, and the receiving end is too slow, you will eat up a lot of RAM with all the cached images.
+
+Currently only one HDF5 file is supported to be read, since the Dectris detectors write a `master` file which you can specify if you want to feed a whole image series.
 
 ## How it works
 
