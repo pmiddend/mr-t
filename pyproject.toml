@@ -3,14 +3,18 @@ name = "mr-t"
 version = "1.0.0"
 description = "connect to Eiger, stream to file and UDP"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
 dependencies = [
     "asyncudp==0.11.0",
-    "culsans==0.7.1",
-    "h5py==3.14.0",
-    "pyzmq==26.2.0",
-    "structlog==24.4.0",
-    "typed-argument-parser==1.10.1",
+    "culsans==0.10.0",
+    "h5py==3.15.1",
+    "pyzmq==27.1.0",
+    "structlog==25.5.0",
+    "typed-argument-parser==1.11.0",
+]
+authors = [
+  {name = "Philipp Middendorf", email = "philipp.middendorf@desy.de"}
 ]
 
 [project.scripts]
@@ -18,8 +22,8 @@ mr_t_server = "mr_t.server:main"
 dummy_client = "mr_t.dummy_client:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.9.0,<0.10.0"]
+build-backend = "uv_build"
 
 [tool.isort]
 profile = "black"
@@ -87,17 +91,16 @@ reportImplicitStringConcatenation = true
 reportMissingSuperCall = false
 
 reportPropertyTypeMismatch = true
-reportShadowedImports = true
 # Works also, but doesn't play along with Tap
 reportUninitializedInstanceVariable = false
 # This works, but there's no way to ignore something in mypy, but not in pyright
 reportUnnecessaryTypeIgnoreComment = false
 # Sensible, but false positive waaaaaay to often
 reportUnusedCallResult = false
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.6",
+    "ruff>=0.14.8",
 ]
 

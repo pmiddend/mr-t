@@ -1,19 +1,54 @@
 {
   "nodes": {
+    "desy-flake": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "simplon-stub": "simplon-stub"
+      },
+      "locked": {
+        "lastModified": 1765456871,
+        "narHash": "sha256-v0F9Ik2j0Hdsyze6LGUeyW6LgTSJMkpVQL+IUF2+SGw=",
+        "ref": "refs/heads/main",
+        "rev": "baa9fbed8dc4f920253e31291a6ac5955a868a35",
+        "revCount": 16,
+        "type": "git",
+        "url": "https://gitlab.desy.de/philipp.middendorf/desy-flake"
+      },
+      "original": {
+        "type": "git",
+        "url": "https://gitlab.desy.de/philipp.middendorf/desy-flake"
+      }
+    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1736012469,
-        "narHash": "sha256-/qlNWm/IEVVH7GfgAIyP6EsVZI6zjAx1cV5zNyrs+rI=",
+        "lastModified": 1764831616,
+        "narHash": "sha256-OtzF5wBvO0jgW1WW1rQU9cMGx7zuvkF7CAVJ1ypzkxA=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "8f3e1f807051e32d8c95cd12b9b421623850a34d",
+        "rev": "c97c47f2bac4fa59e2cbdeba289686ae615f8ed4",
         "type": "github"
       },
       "original": {
+        "id": "nixpkgs",
+        "ref": "nixos-25.11",
+        "type": "indirect"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1765311797,
+        "narHash": "sha256-mSD5Ob7a+T2RNjvPvOA1dkJHGVrNVl8ZOrAwBjKBDQo=",
         "owner": "NixOS",
-        "ref": "nixos-unstable",
         "repo": "nixpkgs",
+        "rev": "09eb77e94fa25202af8f3e81ddc7353d9970ac1b",
         "type": "github"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "ref": "nixos-25.11",
+        "type": "indirect"
       }
     },
     "pyproject-build-systems": {
@@ -29,11 +64,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1736122544,
-        "narHash": "sha256-3Pb/yiQa2MpWPWshxluQR2n1/Bq21hoGqJf3UAC3+ts=",
+        "lastModified": 1763662255,
+        "narHash": "sha256-4bocaOyLa3AfiS8KrWjZQYu+IAta05u3gYZzZ6zXbT0=",
         "owner": "pyproject-nix",
         "repo": "build-system-pkgs",
-        "rev": "68b4c6dae0c47974bda803cf4e87921776f6081d",
+        "rev": "042904167604c681a090c07eb6967b4dd4dae88c",
         "type": "github"
       },
       "original": {
@@ -49,11 +84,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1735874123,
-        "narHash": "sha256-0uSnm3tyid97v6/m7SoBPgcfMya3nVqEM9Y2EpaTlp0=",
+        "lastModified": 1764134915,
+        "narHash": "sha256-xaKvtPx6YAnA3HQVp5LwyYG1MaN4LLehpQI8xEdBvBY=",
         "owner": "pyproject-nix",
         "repo": "pyproject.nix",
-        "rev": "e14a14de0d0026e62d809bfa4cd92c4f9badb262",
+        "rev": "2c8df1383b32e5443c921f61224b198a2282a657",
         "type": "github"
       },
       "original": {
@@ -64,10 +99,29 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs",
+        "desy-flake": "desy-flake",
+        "nixpkgs": "nixpkgs_2",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
         "uv2nix": "uv2nix"
+      }
+    },
+    "simplon-stub": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1764942707,
+        "narHash": "sha256-Xym41VGAuMfcuR3QNwafBaLyuk921oUzloaL/5KozrY=",
+        "owner": "pmiddend",
+        "repo": "simplon-stub",
+        "rev": "ace6a2249d9b950b591c50290bb9df1904e84c44",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pmiddend",
+        "repo": "simplon-stub",
+        "type": "github"
       }
     },
     "uv2nix": {
@@ -80,11 +134,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1736238500,
-        "narHash": "sha256-IOfKV5FZdXIc89XyqiIQAMAr8uTMH22yMcKZNxJu5wc=",
+        "lastModified": 1764992234,
+        "narHash": "sha256-qBbyM1Gnvs/ncbnWfbBboMyevelz+owIdSN5Sg89wzw=",
         "owner": "pyproject-nix",
         "repo": "uv2nix",
-        "rev": "719e15fb1c3c2a90369bdf9e6ae06c5e45aec7cc",
+        "rev": "1610e554e579c3d47b47c8a32d47042116d0e153",
         "type": "github"
       },
       "original": {
