@@ -7,7 +7,6 @@ from typing import (
     Any,
     AsyncIterable,
     AsyncIterator,
-    Callable,
     Optional,
     TypeAlias,
     TypeVar,
@@ -218,11 +217,14 @@ async def main_async() -> None:
         sys.exit(2)
 
     current_series: CurrentSeries | None = None
-    cache_full: Callable[[], bool] = (
-        lambda: len(current_series.saved_frames) > args.frame_cache_limit
-        if current_series is not None and args.frame_cache_limit is not None
-        else False
-    )
+
+    def cache_full() -> bool:
+        return (
+            len(current_series.saved_frames) > args.frame_cache_limit
+            if current_series is not None and args.frame_cache_limit is not None
+            else False
+        )
+
     sender = (
         receive_zmq_messages(
             zmq_target=args.eiger_zmq_host_and_port,

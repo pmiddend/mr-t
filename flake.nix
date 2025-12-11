@@ -2,7 +2,12 @@
   description = "flake for mr-t using uv2nix";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "nixpkgs/nixos-25.11";
+
+    desy-flake = {
+      url = "git+https://gitlab.desy.de/philipp.middendorf/desy-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     pyproject-nix = {
       url = "github:pyproject-nix/pyproject.nix";
@@ -28,6 +33,7 @@
     , uv2nix
     , pyproject-nix
     , pyproject-build-systems
+    , desy-flake
     , ...
     }:
     let
@@ -60,10 +66,15 @@
       };
 
       # This example is only using x86_64-linux
-      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      pkgs = import nixpkgs {
+        system = "x86_64-linux";
+        overlays = [
+          desy-flake.overlays.default
+        ];
+      };
 
       # Use Python 3.12 from nixpkgs
-      python = pkgs.python312;
+      python = pkgs.python313;
 
       # Construct package set
       pythonSet =
@@ -154,6 +165,8 @@
 
               # Prevent uv from downloading managed Python's
               UV_PYTHON_DOWNLOADS = "never";
+
+              HDF5_PLUGIN_PATH = "${pkgs.hdf5-external-filter-plugins}/lib/plugins";
             };
 
             shellHook = ''

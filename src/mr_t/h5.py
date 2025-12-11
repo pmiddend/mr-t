@@ -25,5 +25,5 @@ async def receive_h5_messages(
             if cache_full():
                 await asyncio.sleep(0.5)
                 continue
-            yield ZmqImage(dataset[frame_number][:].tobytes())
+            yield ZmqImage(dataset[frame_number][:].tobytes())  # type: ignore
         yield ZmqSeriesEnd()
