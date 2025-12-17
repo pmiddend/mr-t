@@ -75,7 +75,7 @@ Given a *UDP packet request* for a frame `frameno`, there are a few consideratio
 
 A *ZmqHeader* message has to contain a `config` dictionary, which should be there if the `header_detail` for the stream subsystem of the Dectris detector is set to `all` or `basic`. We need the config because it gives us the `nimages` and `ntrigger` values, determining how many frames we have in each series. We then will the `CurrentSeries` structure with a new series ID (monotonically increasing the last one, starting at 0) and mostly zero values. We also store the new series ID value in `last_series_id`, so that the counter can increase next time.
 
-A *ZmqImage* message only contains a `memoryview` with the whole frame's data (there is a per-image `config` that you can set, too, but we don't use it). The frame's ID we generate ourselves by taking the last frame's number in the `saved_frames` dictionary and increasing by 1 (or taking 0 if we don't have any frames yet). We also remember the ID as the last complete frame (which is used for premature end of series).
+A *ZmqImage* message contains a `memoryview` with the whole frame's data (there is a per-image `config` that you can set, too, but we don't use it). The frame's ID we generate ourselves by taking the last frame's number in the `saved_frames` dictionary and increasing by 1 (or taking 0 if we don't have any frames yet). We also remember the ID as the last complete frame (which is used for premature end of series). The message also contains the image's bit depth, size and encoding (for example, if it was compressed). We want to transport that information to the receiver, so we wait for the first frame and store the frame's information for later sending.
 
 A *ZmqSeriesEnd* simply sets the current series' `ended` boolean to `True`.
 
@@ -90,7 +90,10 @@ There are _four_ types of UDP messages that are sent back and forth between the 
 - **Ping** (message type 0): has no content (so it's just 1 byte long), is sent from the client to the server. Will be answered by a Pong (see below)
 - **Pong** (message type 1)
   1. _series ID_ (32 bit unsigned integer) of the image series currently going on, or 0 if there is no image series
-  2. _frame count_ (32 bit unsigned integer) of the current series (or 0 if there is no image series)
+  2. _bit depth_ (8 bit unsigned integer) of the images in the series
+  3. _frame count_ (32 bit unsigned integer) of the current series (or 0 if there is no image series)
+  4. _length of series name_ (16 bit unsigned integer)
+  5. _series name_ (raw bytes, latin1 encoded, not zero terminated)
 - **Packet request** (message type 2)
   1. _frame number_ (32 bit unsigned integer, starting at zero) the frame number to get bytes from
   2. _start byte_ (32 bit unsigned integer, starting at zero) the start byte inside the requested frame

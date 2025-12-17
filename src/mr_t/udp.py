@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import TypeAlias
 
 
 @dataclass(frozen=True)
@@ -12,6 +11,6 @@ class UdpPong:
     series_id: int
 
 
-UdpRequest: TypeAlias = UdpPing
+type UdpRequest = UdpPing
 
-UdpReply: TypeAlias = UdpPong
+type UdpReply = UdpPong
