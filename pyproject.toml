@@ -102,5 +102,25 @@ pythonVersion = "3.13"
 [dependency-groups]
 dev = [
     "ruff>=0.14.8",
+    "ty>=0.0.2",
 ]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint]
+# to turn this:
+#
+# from X import y,z
+#
+# into
+#
+# from X import y
+# from X import z
+select = ["I001", "F", "E", "W", "I", "N", "UP", "YTT", "ANN", "ASYNC", "S", "FBT", "B", "A", "C4", "T10", "ICN", "LOG", "G", "PIE", "T20", "PYI", "Q", "RET", "SLF", "SLOT", "SIM", "TID", "TC", "INT", "ARG", "PTH", "TD", "FIX", "PD", "PGH", "PL", "R", "W", "FLY", "NPY", "FAST", "AIR", "FURB", "RUF"]
+ignore = ["E501", "E722", "UP035", "ANN401", "S101", "S310", "FBT001", "B017", "B008", "B904", "C405", "C401", "C400", "G004", "G003", "PYI041", "SIM105", "TC001", "PGH003", "PGH004", "PLR2004", "PLR0913", "PLR0915", "PLR0912", "PLR0911", "RUF001", "LOG015"]
+
 

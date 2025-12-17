@@ -1,7 +1,9 @@
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Callable, TypeAlias
+from typing import Any
+from typing import AsyncIterator
+from typing import Callable
 
 import structlog
 import zmq
@@ -12,7 +14,7 @@ def get_zmq_header(msg: list[zmq.Frame]) -> dict[str, Any]:
     return json.loads(msg[0].bytes.decode())
 
 
-ZmqAppendix: TypeAlias = str | dict[str, Any]
+type ZmqAppendix = str | dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -30,9 +32,11 @@ class ZmqSeriesEnd:
 @dataclass(frozen=True)
 class ZmqImage:
     data: memoryview
+    data_type: str
+    compression: str
 
 
-ZmqMessage: TypeAlias = ZmqHeader | ZmqSeriesEnd | ZmqImage
+type ZmqMessage = ZmqHeader | ZmqSeriesEnd | ZmqImage
 
 
 def decode_zmq_appendix(appendix: bytes) -> ZmqAppendix:
@@ -53,7 +57,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
     htype = header["htype"]
 
     if htype == "dimage-1.0":
-        # meta = json.loads(parts[1].bytes.decode())
+        meta = json.loads(parts[1].bytes.decode())
         # shape = tuple(meta["shape"][::-1])  # Eiger shape order is reversed
         # dtype = meta["type"]
         # size = meta["size"]
@@ -71,7 +75,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
                 "Unexpected number of parts in image message: %s", len(parts)
             )
 
-        return ZmqImage(data)
+        return ZmqImage(data, meta["type"], meta["encoding"])
 
     if htype == "dheader-1.0":
         detail = header["header_detail"]
@@ -84,7 +88,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
                 has_appendix = True
             else:
                 raise ValueError(
-                    'Unexpected number of parts for "none" detail: {}'.format(n_parts)
+                    f'Unexpected number of parts for "none" detail: {n_parts}'
                 )
         elif detail == "basic":
             if n_parts == 2:
@@ -93,7 +97,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
                 has_appendix = True
             else:
                 raise ValueError(
-                    'Unexpected number of parts for "basic" detail: {}'.format(n_parts)
+                    f'Unexpected number of parts for "basic" detail: {n_parts}'
                 )
         elif detail == "all":
             if n_parts == 8:
@@ -102,7 +106,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
                 has_appendix = True
             else:
                 raise ValueError(
-                    'Unexpected number of parts for "all" detail: {}'.format(n_parts)
+                    f'Unexpected number of parts for "all" detail: {n_parts}'
                 )
 
         config = (
@@ -115,12 +119,13 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
 
     if htype == "dseries_end-1.0":
         return ZmqSeriesEnd()
-    raise ValueError("Unsupported htype: '{}'".format(htype))
+    raise ValueError(f"Unsupported htype: '{htype}'")
 
 
 async def receive_zmq_messages(
     zmq_target: str, log: structlog.BoundLogger, cache_full: Callable[[], bool]
 ) -> AsyncIterator[ZmqMessage]:
+    # Somehow doesn't type-check, but it's a library issue
     zmq_context = zmq.asyncio.Context()  # type: ignore
 
     zmq_socket = zmq_context.socket(zmq.PULL)
