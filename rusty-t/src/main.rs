@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::io::stdout;
 use std::io::Cursor;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -41,6 +40,8 @@ enum LoopState {
 struct PongPayload {
     series_id: u32,
     frame_count: u32,
+    bits_per_pixel: u8,
+    series_name: String
 }
 
 enum UdpRequest {
@@ -96,12 +97,21 @@ fn decode_response(bytes: Vec<u8>) -> Result<UdpResponse, std::io::Error> {
                 });
             }
 
+	    let bits_per_pixel = reader.read_u8()?;
+
             let frame_count = reader.read_u32::<BigEndian>()?;
+
+	    let _name_length = reader.read_u16::<BigEndian>()?;
+
+            let mut series_name: Vec<u8> = vec![];
+	    reader.read_to_end(&mut series_name)?;
 
             return Ok(UdpResponse::UdpPong {
                 pong_payload: Option::Some(PongPayload {
                     series_id,
                     frame_count,
+		    bits_per_pixel,
+		    series_name: String::from_utf8_lossy(&series_name[..]).to_string(),
                 }),
             });
         }
@@ -197,7 +207,7 @@ fn main() {
                                     info!("no series: same as last series, waiting");
                                     sleep(Duration::from_secs(2))
                                 } else {
-                                    info!("no series: new series, switching state, waiting");
+                                    info!("no series: new series (bit depth {0}, name {1}), switching state, waiting", payload.bits_per_pixel, payload.series_name);
                                     state = LoopState::InSeries {
                                         series_id: payload.series_id,
                                         frame_count: payload.frame_count,

@@ -1,45 +1,38 @@
 import asyncio
-from dataclasses import dataclass
+import logging
 import struct
 import sys
-import logging
-from typing import (
-    Any,
-    AsyncIterable,
-    AsyncIterator,
-    Optional,
-    TypeAlias,
-    TypeVar,
-)
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
+from typing import AsyncIterable
+from typing import AsyncIterator
+from typing import Final
+from typing import TypeVar
 
 import asyncudp
 import structlog
 from tap import Tap
 
-from mr_t.eiger_stream1 import (
-    ZmqHeader,
-    ZmqImage,
-    ZmqSeriesEnd,
-    receive_zmq_messages,
-)
+from mr_t.eiger_stream1 import ZmqHeader
+from mr_t.eiger_stream1 import ZmqImage
+from mr_t.eiger_stream1 import ZmqSeriesEnd
+from mr_t.eiger_stream1 import receive_zmq_messages
 from mr_t.h5 import receive_h5_messages
 
 parent_log = structlog.get_logger()
+
+UDP_PACKET_SIZE: Final = 10000
 
 
 class Arguments(Tap):
     udp_port: int
     udp_host: str
-    eiger_zmq_host_and_port: Optional[str] = (  # host:port of the Eiger ZMQ interface
+    eiger_zmq_host_and_port: str | None = (  # host:port of the Eiger ZMQ interface
         None
     )
-    input_h5_file: Optional[  # hdf5 file to feed into Mr. T to mock the detector
-        Path
-    ] = None
-    frame_cache_limit: Optional[  # Limit the number of incoming ZeroMQ images to this number (can prevent memory overruns)
-        int
-    ] = None
+    input_h5_file: Path | None = None
+    frame_cache_limit: int | None = None
 
 
 @dataclass(frozen=True)
@@ -48,8 +41,16 @@ class UdpPing:
 
 
 @dataclass(frozen=True)
+class UdpSeriesMetadata:
+    series_id: int
+    series_name: str
+    bits_per_pixel: int
+    frame_count: int
+
+
+@dataclass(frozen=True)
 class UdpPong:
-    series_and_frame: None | tuple[int, int]
+    series_metadata: None | UdpSeriesMetadata
 
 
 @dataclass(frozen=True)
@@ -68,8 +69,8 @@ class UdpPacketReply:
     payload: memoryview
 
 
-UdpRequest: TypeAlias = UdpPing | UdpPacketRequest
-UdpReply: TypeAlias = UdpPong | UdpPacketReply
+type UdpRequest = UdpPing | UdpPacketRequest
+type UdpReply = UdpPong | UdpPacketReply
 
 
 def decode_udp_request(b: bytes, addr: Any) -> None | UdpRequest:
@@ -85,12 +86,23 @@ def decode_udp_request(b: bytes, addr: Any) -> None | UdpRequest:
             return None
 
 
-def encode_udp_reply(r: UdpReply) -> bytes:  # type: ignore
-    match r:  # type: ignore
-        case UdpPong(series_and_frame=None):
-            return struct.pack(">BII", 1, 0, 0)
-        case UdpPong(series_and_frame=(series_id, frame_count)):
-            return struct.pack(">BII", 1, series_id, frame_count)
+def encode_udp_reply(r: UdpReply) -> bytes:
+    match r:
+        case UdpPong(series_metadata):
+            if series_metadata is None:
+                return struct.pack(">BIBIH", 1, 0, 0, 0, 0)
+            encoded_name = series_metadata.series_name.encode("latin1", errors="ignore")
+            return (
+                struct.pack(
+                    ">BIBIH",
+                    1,
+                    series_metadata.series_id,
+                    series_metadata.bits_per_pixel,
+                    series_metadata.frame_count,
+                    len(encoded_name),
+                )
+                + encoded_name
+            )
         case UdpPacketReply(
             premature_end_frame, frame_number, start_byte, bytes_in_frame, payload
         ):
@@ -122,7 +134,7 @@ class SeriesPayload:
     payload: bytes
 
 
-SeriesMessage: TypeAlias = SeriesStart | SeriesEnd | SeriesPayload
+type SeriesMessage = SeriesStart | SeriesEnd | SeriesPayload
 
 
 async def dummy_sender(log: structlog.BoundLogger) -> AsyncIterator[SeriesMessage]:
@@ -141,6 +153,7 @@ async def dummy_sender(log: structlog.BoundLogger) -> AsyncIterator[SeriesMessag
 async def udp_receiver(
     log: structlog.BoundLogger, sock: asyncudp.Socket
 ) -> AsyncIterator[UdpRequest]:
+    log.info("starting UDP receive loop")
     while True:
         data, addr = await sock.recvfrom()
         # This is way too much information, logging the raw output
@@ -155,15 +168,15 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-async def _await_next(iterator: AsyncIterator[T]) -> T:
+async def _await_next[T](iterator: AsyncIterator[T]) -> T:
     return await iterator.__anext__()
 
 
-def _as_task(iterator: AsyncIterator[T]) -> asyncio.Task[T]:
+def _as_task[T](iterator: AsyncIterator[T]) -> asyncio.Task[T]:
     return asyncio.create_task(_await_next(iterator))
 
 
-async def merge_iterators(
+async def merge_iterators[T, U](
     a: AsyncIterator[T], b: AsyncIterator[U]
 ) -> AsyncIterable[T | U]:
     atask = _as_task(a)
@@ -183,11 +196,21 @@ async def merge_iterators(
 FrameNumber = int
 
 
+@dataclass(frozen=True)
+class FirstFrameData:
+    bits_per_pixel: int
+    compression: str
+
+
 @dataclass
 class CurrentSeries:
     # This is *not* the series ID from the detector, but rather our
     # own, which is strictly monotonically increasing.
     series_id: int
+    # Descriptive name that will also be used for the output file name
+    series_name: str
+    # Descriptive name for the series, given by the controls system
+    first_frame_data: None | FirstFrameData
     # How many frames in the current series
     frame_count: int
     saved_frames: dict[FrameNumber, memoryview]
@@ -220,9 +243,14 @@ async def main_async() -> None:
 
     def cache_full() -> bool:
         return (
-            len(current_series.saved_frames) > args.frame_cache_limit
+            len(current_series.saved_frames) >= args.frame_cache_limit
             if current_series is not None and args.frame_cache_limit is not None
             else False
+        )
+
+    if args.eiger_zmq_host_and_port is None and args.input_h5_file is None:
+        raise Exception(
+            "please specify either an Eiger host/port or an HDF5 file to read from"
         )
 
     sender = (
@@ -233,7 +261,7 @@ async def main_async() -> None:
         )
         if args.eiger_zmq_host_and_port is not None
         else receive_h5_messages(
-            args.input_h5_file,  # type: ignore
+            cast(Path, args.input_h5_file),
             log=parent_log.bind(system="h5"),
             cache_full=cache_full,
         )
@@ -248,14 +276,23 @@ async def main_async() -> None:
                 parent_log.debug("received ping, sending pong")
                 sock.sendto(
                     encode_udp_reply(
-                        UdpPong((current_series.series_id, current_series.frame_count))
-                        if current_series is not None and current_series.saved_frames
+                        UdpPong(
+                            UdpSeriesMetadata(
+                                series_id=current_series.series_id,
+                                series_name=current_series.series_name,
+                                frame_count=current_series.frame_count,
+                                bits_per_pixel=current_series.first_frame_data.bits_per_pixel,
+                            )
+                        )
+                        if current_series is not None
+                        and current_series.saved_frames
+                        and current_series.first_frame_data is not None
                         else UdpPong(None)
                     ),
                     addr,
                 )
             case UdpPacketRequest(addr, frame_number, start_byte):
-                if current_series is None:
+                if current_series is None or current_series.first_frame_data is None:
                     parent_log.warning(
                         f"request for frame number {frame_number} ignored, not in series"
                     )
@@ -297,7 +334,6 @@ async def main_async() -> None:
                     )
                     continue
 
-                PACKET_SIZE = 10000
                 parent_log.debug(f"received packet request, frame {frame_number}")
 
                 if start_byte > len(this_frame):
@@ -312,7 +348,9 @@ async def main_async() -> None:
                             frame_number=frame_number,
                             start_byte=start_byte,
                             bytes_in_frame=len(this_frame),
-                            payload=this_frame[start_byte : start_byte + PACKET_SIZE],
+                            payload=this_frame[
+                                start_byte : start_byte + UDP_PACKET_SIZE
+                            ],
                         ),
                     ),
                     addr,
@@ -334,14 +372,20 @@ async def main_async() -> None:
                 assert isinstance(nimages, int) and isinstance(ntrigger, int)
                 current_series = CurrentSeries(
                     series_id=last_series_id + 1,
+                    series_name=appendix
+                    if isinstance(appendix, str)
+                    else f"series{series_id}",
+                    first_frame_data=None,
                     frame_count=nimages * ntrigger,
                     saved_frames={},
                     ended=False,
                     last_complete_frame=0,
                 )
                 last_series_id = current_series.series_id
-                parent_log.info(f"series start, new ID {current_series.series_id}")
-            case ZmqImage(data):
+                parent_log.info(
+                    f"series start (appendix {appendix}), new ID {current_series.series_id}"
+                )
+            case ZmqImage(data, data_type, compression):
                 if current_series is None:
                     parent_log.warning(
                         "got a ZmqImage message but we have no series, what the hell went wrong here?"
@@ -354,6 +398,18 @@ async def main_async() -> None:
                 )
                 current_series.last_complete_frame = new_frame_id
                 current_series.saved_frames[new_frame_id] = data
+                if current_series.first_frame_data is None:
+                    current_series.first_frame_data = FirstFrameData(
+                        bits_per_pixel=8
+                        if data_type == "uint8"
+                        else 16
+                        if data_type == "uint16"
+                        else 32,
+                        compression=compression,
+                    )
+                    parent_log.info(
+                        f"first image in series, metadata: {current_series.first_frame_data}"
+                    )
                 parent_log.info(f"image {new_frame_id} received")
             case ZmqSeriesEnd():
                 if current_series is None:
