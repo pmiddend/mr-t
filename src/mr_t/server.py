@@ -234,7 +234,7 @@ async def main_async() -> None:
         if args.eiger_zmq_host_and_port is not None
         else receive_h5_messages(
             args.input_h5_file,  # type: ignore
-            log=parent_log.bind(system="5"),
+            log=parent_log.bind(system="h5"),
             cache_full=cache_full,
         )
     )
