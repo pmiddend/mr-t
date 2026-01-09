@@ -44,6 +44,7 @@ class UdpPing:
 class UdpSeriesMetadata:
     series_id: int
     series_name: str
+    shape: list[int]
     bits_per_pixel: int
     frame_count: int
 
@@ -90,14 +91,16 @@ def encode_udp_reply(r: UdpReply) -> bytes:
     match r:
         case UdpPong(series_metadata):
             if series_metadata is None:
-                return struct.pack(">BIBIH", 1, 0, 0, 0, 0)
+                return struct.pack(">BIBHHIH", 1, 0, 0, 0, 0, 0, 0)
             encoded_name = series_metadata.series_name.encode("latin1", errors="ignore")
             return (
                 struct.pack(
-                    ">BIBIH",
+                    ">BIBHHIH",
                     1,
                     series_metadata.series_id,
                     series_metadata.bits_per_pixel,
+                    series_metadata.shape[1],
+                    series_metadata.shape[0],
                     series_metadata.frame_count,
                     len(encoded_name),
                 )
@@ -200,6 +203,7 @@ FrameNumber = int
 class FirstFrameData:
     bits_per_pixel: int
     compression: str
+    shape: list[int]
 
 
 @dataclass
@@ -280,6 +284,7 @@ async def main_async() -> None:
                             UdpSeriesMetadata(
                                 series_id=current_series.series_id,
                                 series_name=current_series.series_name,
+                                shape=current_series.first_frame_data.shape,
                                 frame_count=current_series.frame_count,
                                 bits_per_pixel=current_series.first_frame_data.bits_per_pixel,
                             )
@@ -385,7 +390,7 @@ async def main_async() -> None:
                 parent_log.info(
                     f"series start (appendix {appendix}), new ID {current_series.series_id}"
                 )
-            case ZmqImage(data, data_type, compression):
+            case ZmqImage(data, shape, data_type, compression):
                 if current_series is None:
                     parent_log.warning(
                         "got a ZmqImage message but we have no series, what the hell went wrong here?"
@@ -406,6 +411,7 @@ async def main_async() -> None:
                         if data_type == "uint16"
                         else 32,
                         compression=compression,
+                        shape=shape,
                     )
                     parent_log.info(
                         f"first image in series, metadata: {current_series.first_frame_data}"

@@ -58,7 +58,9 @@ async def receive_h5_messages(
                 await asyncio.sleep(0.5)
                 continue
             yield ZmqImage(
-                dataset[frame_number][:].tobytes(),  # type: ignore
+                data=dataset[frame_number][:].tobytes(),  # type: ignore
+                # Conversion to list just to match the types. Tuples would be fine as well.
+                shape=list(dataset[frame_number].shape),  # type: ignore
                 # Should be something like "uint32"
                 data_type=dataset.dtype.name,  # type: ignore
                 compression=_dataset_to_compression(dataset),
