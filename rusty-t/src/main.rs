@@ -41,6 +41,8 @@ struct PongPayload {
     series_id: u32,
     frame_count: u32,
     bits_per_pixel: u8,
+    image_width: u16,
+    image_height: u16,
     series_name: String
 }
 
@@ -99,6 +101,10 @@ fn decode_response(bytes: Vec<u8>) -> Result<UdpResponse, std::io::Error> {
 
 	    let bits_per_pixel = reader.read_u8()?;
 
+            let image_width = reader.read_u16::<BigEndian>()?;
+
+            let image_height = reader.read_u16::<BigEndian>()?;
+
             let frame_count = reader.read_u32::<BigEndian>()?;
 
 	    let _name_length = reader.read_u16::<BigEndian>()?;
@@ -111,6 +117,8 @@ fn decode_response(bytes: Vec<u8>) -> Result<UdpResponse, std::io::Error> {
                     series_id,
                     frame_count,
 		    bits_per_pixel,
+		    image_width,
+		    image_height,
 		    series_name: String::from_utf8_lossy(&series_name[..]).to_string(),
                 }),
             });
@@ -207,7 +215,7 @@ fn main() {
                                     info!("no series: same as last series, waiting");
                                     sleep(Duration::from_secs(2))
                                 } else {
-                                    info!("no series: new series (bit depth {0}, name {1}), switching state, waiting", payload.bits_per_pixel, payload.series_name);
+                                    info!("no series: new series (bit depth {0}, width {2}, height {3}, name {1}), switching state, waiting", payload.bits_per_pixel, payload.series_name, payload.image_width, payload.image_height);
                                     state = LoopState::InSeries {
                                         series_id: payload.series_id,
                                         frame_count: payload.frame_count,

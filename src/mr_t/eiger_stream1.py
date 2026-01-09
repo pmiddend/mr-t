@@ -32,6 +32,7 @@ class ZmqSeriesEnd:
 @dataclass(frozen=True)
 class ZmqImage:
     data: memoryview
+    shape: list[int]
     data_type: str
     compression: str
 
@@ -58,7 +59,8 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
 
     if htype == "dimage-1.0":
         meta = json.loads(parts[1].bytes.decode())
-        # shape = tuple(meta["shape"][::-1])  # Eiger shape order is reversed
+        # Eiger shape order is reversed
+        shape = list(meta["shape"][::-1])
         # dtype = meta["type"]
         # size = meta["size"]
         # encoding = meta["encoding"]
@@ -75,7 +77,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
                 "Unexpected number of parts in image message: %s", len(parts)
             )
 
-        return ZmqImage(data, meta["type"], meta["encoding"])
+        return ZmqImage(data, shape, meta["type"], meta["encoding"])
 
     if htype == "dheader-1.0":
         detail = header["header_detail"]
