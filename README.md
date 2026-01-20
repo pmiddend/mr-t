@@ -97,7 +97,9 @@ There are _four_ types of UDP messages that are sent back and forth between the 
   4. _image height_ (16 bit unsigned integer) of the images in the series
   5. _frame count_ (32 bit unsigned integer) of the current series (or 0 if there is no image series)
   6. _length of series name_ (16 bit unsigned integer)
-  7. _series name_ (raw bytes, latin1 encoded, not zero terminated)
+  7. _length of mask path_ (16 bit unsigned integer)
+  8. _series name_ (raw bytes, latin1 encoded, not zero terminated)
+  9. _mask path_ (raw bytes, latin1 encoded, not zero terminated)
 - **Packet request** (message type 2)
   1. _frame number_ (32 bit unsigned integer, starting at zero) the frame number to get bytes from
   2. _start byte_ (32 bit unsigned integer, starting at zero) the start byte inside the requested frame

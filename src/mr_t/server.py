@@ -31,6 +31,7 @@ class Arguments(Tap):
     eiger_zmq_host_and_port: str | None = (  # host:port of the Eiger ZMQ interface
         None
     )
+    mask_path: Path  # Base path for the mask files - the latest one based on timestamp will be used
     input_h5_file: Path | None = None
     frame_cache_limit: int | None = None
 
@@ -44,6 +45,7 @@ class UdpPing:
 class UdpSeriesMetadata:
     series_id: int
     series_name: str
+    mask_path: str
     shape: list[int]
     bits_per_pixel: int
     frame_count: int
@@ -93,6 +95,7 @@ def encode_udp_reply(r: UdpReply) -> bytes:
             if series_metadata is None:
                 return struct.pack(">BIBHHIH", 1, 0, 0, 0, 0, 0, 0)
             encoded_name = series_metadata.series_name.encode("latin1", errors="ignore")
+            encoded_mask = series_metadata.mask_path.encode("latin1", errors="ignore")
             return (
                 struct.pack(
                     ">BIBHHIH",
@@ -103,8 +106,10 @@ def encode_udp_reply(r: UdpReply) -> bytes:
                     series_metadata.shape[0],
                     series_metadata.frame_count,
                     len(encoded_name),
+                    len(encoded_mask),
                 )
                 + encoded_name
+                + encoded_mask
             )
         case UdpPacketReply(
             premature_end_frame, frame_number, start_byte, bytes_in_frame, payload
@@ -213,6 +218,8 @@ class CurrentSeries:
     series_id: int
     # Descriptive name that will also be used for the output file name
     series_name: str
+    # Path to the tiff file containing the mask/partition information
+    mask_path: str
     # Descriptive name for the series, given by the controls system
     first_frame_data: None | FirstFrameData
     # How many frames in the current series
@@ -284,6 +291,7 @@ async def main_async() -> None:
                             UdpSeriesMetadata(
                                 series_id=current_series.series_id,
                                 series_name=current_series.series_name,
+                                mask_path=current_series.mask_path,
                                 shape=current_series.first_frame_data.shape,
                                 frame_count=current_series.frame_count,
                                 bits_per_pixel=current_series.first_frame_data.bits_per_pixel,
@@ -375,11 +383,21 @@ async def main_async() -> None:
                 ntrigger = config.get("ntrigger")
                 assert nimages is not None and ntrigger is not None
                 assert isinstance(nimages, int) and isinstance(ntrigger, int)
+
+                try:
+                    mask_file = max(
+                        [f for f in args.mask_path.iterdir() if f.is_file()],
+                        key=lambda f: f.stat().st_mtime,
+                    )
+                except:
+                    raise Exception(f"did not find any masks in {args.mask_path}")
+
                 current_series = CurrentSeries(
                     series_id=last_series_id + 1,
                     series_name=appendix
                     if isinstance(appendix, str)
                     else f"series{series_id}",
+                    mask_path=str(mask_file),
                     first_frame_data=None,
                     frame_count=nimages * ntrigger,
                     saved_frames={},
