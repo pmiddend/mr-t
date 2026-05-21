@@ -286,14 +286,16 @@ async def main_async() -> None:
         await asyncio.start_server(handle_status, port=args.status_port)
 
     last_series_id = 0
+    is_consuming = False
     async for msg in merge_iterators(sender, receiver):
         match msg:
             case UdpPing(addr):
                 parent_log.debug("received ping, sending pong")
 
-                if current_series is not None:
+                if current_series is not None and is_consuming:
                     parent_log.info("received ping with current series, resetting")
                     current_series = None
+                    is_consuming = False
 
                 sock.sendto(
                     encode_udp_reply(
@@ -314,6 +316,8 @@ async def main_async() -> None:
                     addr,
                 )
             case UdpPacketRequest(addr, frame_number, start_byte):
+                is_consuming = True
+
                 if current_series is None or current_series.first_frame_data is None:
                     parent_log.warning(
                         f"request for frame number {frame_number} ignored, not in series"
