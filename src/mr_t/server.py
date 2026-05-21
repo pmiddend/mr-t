@@ -4,11 +4,12 @@ import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from typing import AsyncIterable
 from typing import AsyncIterator
 from typing import Final
 from typing import TypeVar
+from typing import cast
 
 import asyncudp
 import structlog
@@ -395,6 +396,7 @@ async def main_async() -> None:
                     parent_log.warning(
                         "got a ZmqImage message but we have no series, what the hell went wrong here?"
                     )
+                    continue
                 assert current_series is not None
                 new_frame_id = (
                     max(current_series.saved_frames) + 1
@@ -422,6 +424,7 @@ async def main_async() -> None:
                     parent_log.warning(
                         "got a ZmqSeriesEnd message but we have no series, what the hell went wrong here?"
                     )
+                    continue
                 parent_log.info("series ended")
                 assert current_series is not None
                 current_series.ended = True
