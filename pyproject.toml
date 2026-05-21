@@ -25,6 +25,9 @@ dummy_client = "mr_t.dummy_client:main"
 requires = ["uv_build>=0.9.0,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.ty.environment]
+python = "/nix/store/dsmdqmw22a5fc5z9hamhq1bryf2l32ig-mr-t-dev-env/bin/python"
+
 [tool.isort]
 profile = "black"
 force_single_line = "true"
