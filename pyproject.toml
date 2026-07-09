@@ -7,12 +7,12 @@ requires-python = ">=3.13"
 license = "GPL-3.0-or-later"
 dependencies = [
     "asyncudp==0.11.0",
-    "culsans==0.10.0",
-    "h5py==3.15.1",
+    "culsans==0.11.0",
+    "h5py==3.16.0",
     "pydantic==2.13.4",
     "pyzmq==27.1.0",
-    "structlog==25.5.0",
-    "typed-argument-parser==1.11.0",
+    "structlog==26.1.0",
+    "typed-argument-parser==1.12.0",
 ]
 authors = [
   {name = "Philipp Middendorf", email = "philipp.middendorf@desy.de"}

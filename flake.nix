@@ -2,7 +2,7 @@
   description = "flake for mr-t using uv2nix";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-25.11";
+    nixpkgs.url = "nixpkgs/nixos-26.05";
 
     desy-flake = {
       url = "git+https://gitlab.desy.de/philipp.middendorf/desy-flake";
