@@ -14,7 +14,7 @@ Code formatting and checking is done with [ruff](https://docs.astral.sh/ruff/), 
 If you have uv installed (see above) running the main program should be as easy as:
 
 ```
-uv run mr_t_server --eiger-zmq-host-and-port $host --udp-host localhost --udp-port 9000
+uv run mr_t_server --eiger-zmq-host-and-port $host --udp-host localhost --udp-port 9000 --mask-path dummy
 ```
 
 Which will receive images from the Dectris detector `$host:9999` and also listen for UDP messages on `localhost:9000`. Instead of using an actual Detector, you can also use one of the [Simplon](https://github.com/pmiddend/simplon-stub) API [mocks](https://github.com/AustralianSynchrotron/ansto-simplon-api).
@@ -22,7 +22,7 @@ Which will receive images from the Dectris detector `$host:9999` and also listen
 You can also just use plain Python, of course:
 
 ```
-python src/mr_t/server.py --eiger-zmq-host-and-port $host --udp-host localhost --udp-port 9000
+python src/mr_t/server.py --eiger-zmq-host-and-port $host --udp-host localhost --udp-port 9000 --mask-path dummy
 ```
 
 Note that you have to install the dependencies mentioned in `pyproject.toml` beforehand (to a `venv`, for example).
@@ -34,7 +34,7 @@ There is a configurable `--frame-cache-limit` which, if you set it, will limit t
 If you already have a finished image series stored in an HDF5 file, you can tell mr-t to read images from this file, instead of waiting for images via ZMQ. A sample command line looks like this:
 
 ```
-uv run mr_t_server --input-h5-file $myhdf5file --frame-cache-limit 5 --udp-host localhost --udp-port 9000
+uv run mr_t_server --input-h5-file $myhdf5file --frame-cache-limit 5 --udp-host localhost --udp-port 9000 --mask-path dummy
 ```
 
 Note that in addition to `--input-h5-file` we are passing `--frame-cache-limit 5`. This will read at most 5 frames from the HDF5 file and wait until the other side (the FPGA) has actually pulled images from this cache. If you don't do this, and the receiving end is too slow, you will eat up a lot of RAM with all the cached images.
@@ -92,12 +92,9 @@ There are _four_ types of UDP messages that are sent back and forth between the 
 - **Ping** (message type 0): has no content (so it's just 1 byte long), is sent from the client to the server. Will be answered by a Pong (see below)
 - **Pong** (message type 1)
   1. _series ID_ (32 bit unsigned integer) of the image series currently going on, or 0 if there is no image series
-  2. _bit depth_ (8 bit unsigned integer) of the images in the series
-  3. _image width_ (16 bit unsigned integer) of the images in the series
-  4. _image height_ (16 bit unsigned integer) of the images in the series
-  5. _frame count_ (32 bit unsigned integer) of the current series (or 0 if there is no image series)
-  6. _length of series name_ (16 bit unsigned integer)
-  7. _series name_ (raw bytes, latin1 encoded, not zero terminated)
+  2. _frame count_ (32 bit unsigned integer) of the current series (or 0 if there is no image series)
+  3. _length of metadata_ (16 bit unsigned integer) length of the following field
+  4. _metadata_ (raw bytes, latin1 encoded, not zero terminated) JSON metadata
 - **Packet request** (message type 2)
   1. _frame number_ (32 bit unsigned integer, starting at zero) the frame number to get bytes from
   2. _start byte_ (32 bit unsigned integer, starting at zero) the start byte inside the requested frame

@@ -1,8 +1,10 @@
+import json
+from pydantic import BaseModel
 import asyncio
 import logging
 import struct
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from typing import AsyncIterable
@@ -29,6 +31,7 @@ UDP_PACKET_SIZE: Final = 10000
 class Arguments(Tap):
     udp_port: int
     udp_host: str
+    mask_path: str  # Path to the mask file to be used
     eiger_zmq_host_and_port: str | None = (  # host:port of the Eiger ZMQ interface
         None
     )
@@ -44,18 +47,25 @@ class UdpPing:
     addr: Any
 
 
-@dataclass(frozen=True)
-class UdpSeriesMetadata:
-    series_id: int
-    series_name: str
+class SeriesMetadata(BaseModel):
+    id: int
+    name: str
     shape: list[int]
     bits_per_pixel: int
     frame_count: int
+    mask_path: str
+
+
+@dataclass(frozen=True)
+class UdpSeriesData:
+    id: int
+    frame_count: int
+    metadata: SeriesMetadata
 
 
 @dataclass(frozen=True)
 class UdpPong:
-    series_metadata: None | UdpSeriesMetadata
+    series: None | UdpSeriesData
 
 
 @dataclass(frozen=True)
@@ -93,22 +103,21 @@ def decode_udp_request(b: bytes, addr: Any) -> None | UdpRequest:
 
 def encode_udp_reply(r: UdpReply) -> bytes:
     match r:
-        case UdpPong(series_metadata):
-            if series_metadata is None:
-                return struct.pack(">BIBHHIH", 1, 0, 0, 0, 0, 0, 0)
-            encoded_name = series_metadata.series_name.encode("latin1", errors="ignore")
+        case UdpPong(series_data):
+            if series_data is None:
+                return struct.pack(">BIIH", 1, 0, 0, 0)
+            encoded_metadata = json.dumps(
+                series_data.metadata.model_dump_json(), allow_nan=False
+            ).encode("latin1", errors="ignore")
             return (
                 struct.pack(
-                    ">BIBHHIH",
+                    ">BIIH",
                     1,
-                    series_metadata.series_id,
-                    series_metadata.bits_per_pixel,
-                    series_metadata.shape[1],
-                    series_metadata.shape[0],
-                    series_metadata.frame_count,
-                    len(encoded_name),
+                    series_data.id,
+                    series_data.frame_count,
+                    len(encoded_metadata),
                 )
-                + encoded_name
+                + encoded_metadata
             )
         case UdpPacketReply(
             premature_end_frame, frame_number, start_byte, bytes_in_frame, payload
@@ -215,9 +224,11 @@ class CurrentSeries:
     # This is *not* the series ID from the detector, but rather our
     # own, which is strictly monotonically increasing.
     series_id: int
-    # Descriptive name that will also be used for the output file name
-    series_name: str
-    # Descriptive name for the series, given by the controls system
+    # Metadata not related to the control flow
+    metadata: SeriesMetadata
+    # Data for the first frame. Only if that arrived, we can deliver a
+    # new series since we have to give "bits per pixel" and "shape",
+    # for example.
     first_frame_data: None | FirstFrameData
     # How many frames in the current series
     frame_count: int
@@ -297,12 +308,10 @@ async def main_async() -> None:
                 sock.sendto(
                     encode_udp_reply(
                         UdpPong(
-                            UdpSeriesMetadata(
-                                series_id=current_series.series_id,
-                                series_name=current_series.series_name,
-                                shape=current_series.first_frame_data.shape,
+                            UdpSeriesData(
+                                id=current_series.series_id,
                                 frame_count=current_series.frame_count,
-                                bits_per_pixel=current_series.first_frame_data.bits_per_pixel,
+                                metadata=current_series.metadata,
                             )
                         )
                         if current_series is not None
@@ -393,9 +402,18 @@ async def main_async() -> None:
                 assert isinstance(nimages, int) and isinstance(ntrigger, int)
                 current_series = CurrentSeries(
                     series_id=last_series_id + 1,
-                    series_name=appendix
-                    if isinstance(appendix, str)
-                    else f"series{series_id}",
+                    metadata=SeriesMetadata(
+                        id=last_series_id + 1,
+                        name=appendix
+                        if isinstance(appendix, str)
+                        else f"series{series_id}",
+                        # Will be added later (or from config if we find out if it's in there)
+                        shape=(0, 0),
+                        # Will be added later (or from config if we find out if it's in there)
+                        bits_per_pixel=0,
+                        frame_count=nimages * ntrigger,
+                        mask_path=args.mask_path,
+                    ),
                     first_frame_data=None,
                     frame_count=nimages * ntrigger,
                     saved_frames={},
@@ -421,15 +439,20 @@ async def main_async() -> None:
                 current_series.last_complete_frame = new_frame_id
                 current_series.saved_frames[new_frame_id] = data
                 if current_series.first_frame_data is None:
-                    current_series.first_frame_data = FirstFrameData(
-                        bits_per_pixel=8
+                    bpp = (
+                        8
                         if data_type == "uint8"
                         else 16
                         if data_type == "uint16"
-                        else 32,
+                        else 32
+                    )
+                    current_series.first_frame_data = FirstFrameData(
+                        bits_per_pixel=bpp,
                         compression=compression,
                         shape=shape,
                     )
+                    current_series.metadata.shape = shape
+                    current_series.metadata.bits_per_pixel = bpp
                     parent_log.info(
                         f"first image in series, metadata: {current_series.first_frame_data}"
                     )
