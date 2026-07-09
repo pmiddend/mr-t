@@ -32,6 +32,9 @@ class Arguments(Tap):
     eiger_zmq_host_and_port: str | None = (  # host:port of the Eiger ZMQ interface
         None
     )
+    status_port: int | None = (
+        None  # Port where you can connect via tcp to get the current status
+    )
     input_h5_file: Path | None = None
     frame_cache_limit: int | None = None
 
@@ -273,6 +276,18 @@ async def main_async() -> None:
     )
     sock = await asyncudp.create_socket(local_addr=(args.udp_host, args.udp_port))
     receiver = udp_receiver(log=parent_log.bind(system="udp"), sock=sock)
+
+    async def handle_status(
+        _reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        writer.write(b"idle" if current_series is None else b"running")
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    if args.status_port is not None:
+        parent_log.info(f"starting status server on port {args.status_port}")
+        await asyncio.start_server(handle_status, port=args.status_port)
 
     last_series_id = 0
     async for msg in merge_iterators(sender, receiver):

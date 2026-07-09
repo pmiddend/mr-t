@@ -9,6 +9,7 @@ dependencies = [
     "asyncudp==0.11.0",
     "culsans==0.10.0",
     "h5py==3.15.1",
+    "pydantic==2.13.4",
     "pyzmq==27.1.0",
     "structlog==25.5.0",
     "typed-argument-parser==1.11.0",
@@ -25,84 +26,17 @@ dummy_client = "mr_t.dummy_client:main"
 requires = ["uv_build>=0.9.0,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.ty.rules]
+all = "error"
+
 [tool.isort]
 profile = "black"
 force_single_line = "true"
 
-[tool.pyright]
-include = ["src"]
-typeCheckingMode = "basic"
-strictListInference = true
-strictDictionaryInference = true
-strictSetInference = true
-enableReachabilityAnalysis = true
-reportInvalidStringEscapeSequence = true
-reportAssertAlwaysTrue = true
-reportInvalidTypeVarUse = false
-# deliberately false, since we cannot do anything if this happens
-reportMissingTypeStubs = false
-reportSelfClsParameterName = true
-reportUnsupportedDunderAll = true
-reportWildcardImportFromLibrary = true
-reportConstantRedefinition = true
-reportDeprecated = true
-reportDuplicateImport = true
-reportFunctionMemberAccess = true
-reportImportCycles = true
-reportIncompatibleMethodOverride = true
-reportIncompatibleVariableOverride = true
-reportIncompleteStub = true
-reportInconsistentConstructor = true
-reportInvalidStubStatement = true
-reportMatchNotExhaustive = true
-reportMissingParameterType = true
-reportMissingTypeArgument = true
-reportOverlappingOverload = true
-reportPrivateUsage = true
-reportTypeCommentUsage = true
-reportUnknownLambdaType = true
-reportUnknownArgumentType = true
-reportUnknownParameterType = true
-# Doesn't work _at all_ for libraries
-reportUnknownMemberType = false
-# Doesn't work _at all_ for libraries
-reportUnknownVariableType = false
-reportUnnecessaryCast = true
-reportUnnecessaryComparison = true
-reportUnnecessaryContains = true
-reportUnnecessaryIsInstance = true
-reportUnusedClass = true
-reportUnusedImport = true
-reportUnusedFunction = true
-reportUnusedVariable = true
-reportUnusedExpression = true
-reportUntypedBaseClass = true
-reportUntypedClassDecorator = true
-# this screws up quart route annotations
-reportUntypedFunctionDecorator = false
-reportUntypedNamedTuple = true
-
-# breaks fastapi
-reportCallInDefaultInitializer = false
-# Making this work on older Python versions requires a package. Annoying.
-reportImplicitOverride = false
-reportImplicitStringConcatenation = true
-# In principle, a good message. However, it also forces you to call the object super method, which is pointless
-reportMissingSuperCall = false
-
-reportPropertyTypeMismatch = true
-# Works also, but doesn't play along with Tap
-reportUninitializedInstanceVariable = false
-# This works, but there's no way to ignore something in mypy, but not in pyright
-reportUnnecessaryTypeIgnoreComment = false
-# Sensible, but false positive waaaaaay to often
-reportUnusedCallResult = false
-pythonVersion = "3.13"
-
 [dependency-groups]
 dev = [
-    "ruff>=0.14.8",
-    "ty>=0.0.2",
+    "ruff>=0.15.20",
+    "ty==0.0.57",
 ]
 
 [tool.ruff]

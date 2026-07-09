@@ -127,8 +127,7 @@ def decode_zmq_message(parts: list[zmq.Frame]) -> ZmqMessage:
 async def receive_zmq_messages(
     zmq_target: str, log: structlog.BoundLogger, cache_full: Callable[[], bool]
 ) -> AsyncIterator[ZmqMessage]:
-    # Somehow doesn't type-check, but it's a library issue
-    zmq_context = zmq.asyncio.Context()  # type: ignore
+    zmq_context = zmq.asyncio.Context()
 
     zmq_socket = zmq_context.socket(zmq.PULL)
     zmq_socket.connect(zmq_target)
