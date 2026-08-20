@@ -1,10 +1,9 @@
-import json
-from pydantic import BaseModel
 import asyncio
+import json
 import logging
 import struct
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from typing import AsyncIterable
@@ -15,6 +14,7 @@ from typing import cast
 
 import asyncudp
 import structlog
+from pydantic import BaseModel
 from tap import Tap
 
 from mr_t.eiger_stream1 import ZmqHeader
@@ -280,7 +280,7 @@ async def main_async() -> None:
         )
         if args.eiger_zmq_host_and_port is not None
         else receive_h5_messages(
-            cast(Path, args.input_h5_file),
+            cast("Path", args.input_h5_file),
             log=parent_log.bind(system="h5"),
             cache_full=cache_full,
         )
@@ -301,10 +301,17 @@ async def main_async() -> None:
         await asyncio.start_server(handle_status, port=args.status_port)
 
     last_series_id = 0
+    is_consuming = False
     async for msg in merge_iterators(sender, receiver):
         match msg:
             case UdpPing(addr):
                 parent_log.debug("received ping, sending pong")
+
+                if current_series is not None and is_consuming:
+                    parent_log.info("received ping with current series, resetting")
+                    current_series = None
+                    is_consuming = False
+
                 sock.sendto(
                     encode_udp_reply(
                         UdpPong(
@@ -322,6 +329,7 @@ async def main_async() -> None:
                     addr,
                 )
             case UdpPacketRequest(addr, frame_number, start_byte):
+                is_consuming = True
                 if current_series is None or current_series.first_frame_data is None:
                     parent_log.warning(
                         f"request for frame number {frame_number} ignored, not in series"
