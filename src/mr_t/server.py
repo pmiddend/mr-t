@@ -40,6 +40,7 @@ class Arguments(Tap):
     )
     input_h5_file: Path | None = None
     frame_cache_limit: int | None = None
+    delete_old_frames: bool = False # Delete old frames (can cause performance problems!)
 
 
 @dataclass(frozen=True)
@@ -394,11 +395,12 @@ async def main_async() -> None:
                     addr,
                 )
 
-                saved_frame_ids = list(current_series.saved_frames)
-                for fid in saved_frame_ids:
-                    if fid < frame_number:
-                        parent_log.info(f"deleting old frame {fid}")
-                        current_series.saved_frames.pop(fid)
+                if args.delete_old_frames:
+                    saved_frame_ids = list(current_series.saved_frames)
+                    for fid in saved_frame_ids:
+                        if fid < frame_number:
+                            parent_log.info(f"deleting old frame {fid}")
+                            current_series.saved_frames.pop(fid)
             case ZmqHeader(series_id, config, appendix):
                 if config is None:
                     raise Exception(
