@@ -398,10 +398,13 @@ async def main_async() -> None:
                     current_series.last_frame_requested = frame_number
                     parent_log.info("Deleting frame 0!")
                     current_series.saved_frames[0] = None
-                elif current_series.last_frame_requested is not None and frame_number > current_series.last_frame_requested:
+                elif (
+                    current_series.last_frame_requested is not None
+                    and frame_number > current_series.last_frame_requested
+                ):
                     current_series.last_frame_requested = frame_number
-                    parent_log.info(f"Deleting frame {frame_number-1}")
-                    current_series.saved_frames[frame_number-1] = None
+                    parent_log.info(f"Deleting frame {frame_number - 1}")
+                    current_series.saved_frames[frame_number - 1] = None
             case ZmqHeader(series_id, config, appendix):
                 if config is None:
                     raise Exception(
@@ -445,7 +448,9 @@ async def main_async() -> None:
                     continue
                 assert current_series is not None
                 current_series.saved_frames[current_series.last_complete_frame] = data
-                current_series.last_complete_frame = current_series.last_complete_frame + 1
+                current_series.last_complete_frame = (
+                    current_series.last_complete_frame + 1
+                )
                 if current_series.first_frame_data is None:
                     bpp = (
                         8
@@ -464,7 +469,9 @@ async def main_async() -> None:
                     parent_log.info(
                         f"first image in series, metadata: {current_series.first_frame_data}"
                     )
-                parent_log.info(f"image {current_series.last_complete_frame-1} received")
+                parent_log.info(
+                    f"image {current_series.last_complete_frame - 1} received"
+                )
             case ZmqSeriesEnd():
                 if current_series is None:
                     parent_log.warning(
