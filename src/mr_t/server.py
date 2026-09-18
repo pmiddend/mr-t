@@ -40,7 +40,6 @@ class Arguments(Tap):
     )
     input_h5_file: Path | None = None
     frame_cache_limit: int | None = None
-    delete_old_frames: bool = False # Delete old frames (can cause performance problems!)
 
 
 @dataclass(frozen=True)
@@ -233,7 +232,8 @@ class CurrentSeries:
     first_frame_data: None | FirstFrameData
     # How many frames in the current series
     frame_count: int
-    saved_frames: dict[FrameNumber, memoryview]
+    saved_frames: list[None | memoryview]
+    last_frame_requested: None | int
     # Important for the case of a premature abort. For example, say
     # the detector delivered frame 10 (completely), and was aborted
     # afterwards. The client connecting to Mr. T would get frame 10,
@@ -323,7 +323,7 @@ async def main_async() -> None:
                             )
                         )
                         if current_series is not None
-                        and current_series.saved_frames
+                        and current_series.saved_frames[0] is not None
                         and current_series.first_frame_data is not None
                         else UdpPong(None)
                     ),
@@ -336,7 +336,7 @@ async def main_async() -> None:
                         f"request for frame number {frame_number} ignored, not in series"
                     )
                     continue
-                this_frame = current_series.saved_frames.get(frame_number)
+                this_frame = current_series.saved_frames[frame_number]
 
                 # We might not have received this frame yet (client is
                 # faster than server), or we will never receive it due
@@ -394,13 +394,14 @@ async def main_async() -> None:
                     ),
                     addr,
                 )
-
-                if args.delete_old_frames:
-                    saved_frame_ids = list(current_series.saved_frames)
-                    for fid in saved_frame_ids:
-                        if fid < frame_number:
-                            parent_log.info(f"deleting old frame {fid}")
-                            current_series.saved_frames.pop(fid)
+                if frame_number > 0 and current_series.last_frame_requested is None:
+                    current_series.last_frame_requested = frame_number
+                    parent_log.info("Deleting frame 0!")
+                    current_series.saved_frames[0] = None
+                elif current_series.last_frame_requested is not None and frame_number > current_series.last_frame_requested:
+                    current_series.last_frame_requested = frame_number
+                    parent_log.info(f"Deleting frame {frame_number-1}")
+                    current_series.saved_frames[frame_number-1] = None
             case ZmqHeader(series_id, config, appendix):
                 if config is None:
                     raise Exception(
@@ -410,6 +411,7 @@ async def main_async() -> None:
                 ntrigger = config.get("ntrigger")
                 assert nimages is not None and ntrigger is not None
                 assert isinstance(nimages, int) and isinstance(ntrigger, int)
+                frame_count = nimages * ntrigger
                 current_series = CurrentSeries(
                     series_id=last_series_id + 1,
                     metadata=SeriesMetadata(
@@ -421,12 +423,13 @@ async def main_async() -> None:
                         shape=(0, 0),
                         # Will be added later (or from config if we find out if it's in there)
                         bits_per_pixel=0,
-                        frame_count=nimages * ntrigger,
+                        frame_count=frame_count,
                         mask_path=args.mask_path,
                     ),
                     first_frame_data=None,
                     frame_count=nimages * ntrigger,
-                    saved_frames={},
+                    saved_frames=[None for _ in range(frame_count)],
+                    last_frame_requested=None,
                     ended=False,
                     last_complete_frame=0,
                 )
@@ -441,13 +444,8 @@ async def main_async() -> None:
                     )
                     continue
                 assert current_series is not None
-                new_frame_id = (
-                    max(current_series.saved_frames) + 1
-                    if current_series.saved_frames
-                    else 0
-                )
-                current_series.last_complete_frame = new_frame_id
-                current_series.saved_frames[new_frame_id] = data
+                current_series.saved_frames[current_series.last_complete_frame] = data
+                current_series.last_complete_frame = current_series.last_complete_frame + 1
                 if current_series.first_frame_data is None:
                     bpp = (
                         8
@@ -466,7 +464,7 @@ async def main_async() -> None:
                     parent_log.info(
                         f"first image in series, metadata: {current_series.first_frame_data}"
                     )
-                parent_log.info(f"image {new_frame_id} received")
+                parent_log.info(f"image {current_series.last_complete_frame-1} received")
             case ZmqSeriesEnd():
                 if current_series is None:
                     parent_log.warning(
@@ -477,9 +475,10 @@ async def main_async() -> None:
                 assert current_series is not None
                 current_series.ended = True
         if current_series is not None:
-            sys.stderr.write(
-                f"\r series ID {current_series.series_id: >4} cached frames: {len(current_series.saved_frames.keys())}"
-            )
+            if current_series.last_frame_requested is not None:
+                sys.stderr.write(
+                    f"\r series ID {current_series.series_id: >4} cached frames: {current_series.last_complete_frame - current_series.last_frame_requested}"
+                )
         else:
             sys.stderr.write("\rno series")
 
